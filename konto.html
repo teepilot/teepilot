@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" sizes="128x128" href="TeePilot-Logo.png">
+<title>Konto - TeePilot</title>
+<link rel="stylesheet" href="main.css">
+
+<style>
+.account-section {
+    padding: 150px 50px 100px;
+    color: white;
+    text-align: center;
+}
+
+.account-box {
+    max-width: 450px;
+    margin: 0 auto;
+    padding: 50px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.2);
+    backdrop-filter: blur(10px);
+}
+
+.account-box h2 {
+    margin-bottom: 30px;
+    font-size: 20px;
+}
+
+.account-box input {
+    width: 100%;
+    padding: 15px;
+    margin-bottom: 20px;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.3);
+    color: white;
+    font-size: 14px;
+    letter-spacing: 2px;
+}
+
+.account-box button {
+    width: 100%;
+    padding: 15px;
+    background: white;
+    color: #111;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.switch-mode {
+    margin-top: 20px;
+    font-size: 12px;
+    opacity: 0.7;
+    cursor: pointer;
+}
+
+.profile p {
+    margin-bottom: 15px;
+    letter-spacing: 2px;
+}
+
+.profile {
+    text-align: left;
+}
+
+.avatar-wrapper {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 30px;
+}
+
+.avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: #3d8a7c;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 26px;
+    color: white;
+    letter-spacing: 3px;
+}
+
+.profile-info {
+    margin-bottom: 25px;
+}
+
+.profile-info p {
+    margin-bottom: 15px;
+    font-size: 13px;
+    opacity: 0.9;
+    text-align: left;
+}
+
+</style>
+</head>
+
+<body>
+
+<nav class="navbar">
+    <div class="logo">
+        <img src="TeePilot-Logo.png">
+    </div>
+    <ul class="nav-links">
+        <li><a href="index.html">Hem</a></li>
+        <li><a href="about.html">Om</a></li>
+        <li><a href="konto.html">Konto</a></li>
+    </ul>
+</nav>
+
+<section class="hero">
+    <div class="hero-content">
+        <h1>TeePilot</h1>
+        <p>Mitt konto</p>
+    </div>
+</section>
+
+<section class="account-section">
+
+<div class="account-box" id="authBox">
+
+    <h2 id="title">Logga in</h2>
+
+    <input type="text" id="name" placeholder="NAMN" style="display:none;">
+    <input type="tel" id="phone" placeholder="TELEFONNUMMER" style="display:none;">
+    <input type="email" id="email" placeholder="E-POST">
+    <input type="password" id="password" placeholder="LÖSENORD">
+
+    <button onclick="submitForm()">LOGGA IN</button>
+
+    <div class="switch-mode" onclick="toggleMode()">
+        Har du inget konto? Skapa konto
+    </div>
+</div>
+
+<div class="account-box profile" id="profileBox" style="display:none;">
+
+    <div class="avatar-wrapper">
+        <div class="avatar" id="avatar">TP</div>
+    </div>
+
+    <div class="profile-info">
+        <p id="profileName"></p>
+        <p id="profileEmail"></p>
+        <p id="profilePhone"></p>
+    </div>
+
+    <button onclick="logout()">LOGGA UT</button>
+</div>
+
+
+</section>
+
+<footer>
+    <p>© 2026 TeePilot</p>
+</footer>
+
+<script>
+
+let isLogin = true;
+
+const nameInput = document.getElementById("name");
+const phoneInput = document.getElementById("phone");
+const emailInput = document.getElementById("email");
+const passwordInput = document.getElementById("password");
+
+const authBox = document.getElementById("authBox");
+const profileBox = document.getElementById("profileBox");
+
+const profileName = document.getElementById("profileName");
+const profileEmail = document.getElementById("profileEmail");
+const profilePhone = document.getElementById("profilePhone");
+
+const loggedInUser = localStorage.getItem("loggedInUser");
+if (loggedInUser) {
+    showProfile(loggedInUser);
+}
+
+function toggleMode() {
+    isLogin = !isLogin;
+
+    document.getElementById("title").innerText =
+        isLogin ? "Logga in" : "Skapa konto";
+
+    document.querySelector(".account-box button").innerText =
+        isLogin ? "LOGGA IN" : "SKAPA KONTO";
+
+    document.querySelector(".switch-mode").innerText =
+        isLogin
+        ? "Har du inget konto? Skapa konto"
+        : "Har du redan konto? Logga in";
+
+    nameInput.style.display = isLogin ? "none" : "block";
+    phoneInput.style.display = isLogin ? "none" : "block";
+}
+
+function submitForm() {
+    const email = emailInput.value.trim();
+    const password = passwordInput.value.trim();
+
+    if (!email || !password) {
+        alert("Fyll i alla fält");
+        return;
+    }
+
+    if (isLogin) {
+        const user = JSON.parse(localStorage.getItem(email));
+
+        if (!user || user.password !== password) {
+            alert("Fel e-post eller lösenord");
+            return;
+        }
+
+        localStorage.setItem("loggedInUser", email);
+        showProfile(email);
+
+    } else {
+        if (!nameInput.value || !phoneInput.value) {
+            alert("Fyll i namn och telefonnummer");
+            return;
+        }
+
+        const user = {
+            name: nameInput.value,
+            phone: phoneInput.value,
+            email: email,
+            password: password
+        };
+
+        localStorage.setItem(email, JSON.stringify(user));
+        alert("Konto skapat! Logga in nu.");
+        toggleMode();
+    }
+}
+
+function showProfile(email) {
+    const user = JSON.parse(localStorage.getItem(email));
+
+    authBox.style.display = "none";
+    profileBox.style.display = "block";
+
+    profileName.innerText = "NAMN: " + user.name;
+    profileEmail.innerText = "E-POST: " + user.email;
+    profilePhone.innerText = "TELEFON: " + user.phone;
+
+    // Initialer
+    const initials = user.name
+        .split(" ")
+        .map(n => n[0])
+        .join("")
+        .toUpperCase();
+
+    document.getElementById("avatar").innerText = initials;
+}
+
+
+function logout() {
+    localStorage.removeItem("loggedInUser");
+    location.reload();
+}
+</script>
+
+</body>
+</html>

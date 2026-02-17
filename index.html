@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" sizes="128x128" href="TeePilot-Logo.png">
+<title>TeePilot</title>
+<link rel="stylesheet" href="main.css">
+
+<style>
+
+.small-hero:hover a::after {
+    width: 100%;
+}
+
+.hero a:hover::after {
+    width: 100%;
+}
+
+
+.hero-row {
+    display: flex;
+    gap: 40px;      
+    margin-top: 40px; 
+}
+
+.small-hero {
+    flex: 1;
+    height: 520px;
+    background: url('TeePilotHero.png') no-repeat center center/cover;
+    position: relative;
+    overflow: hidden;
+}
+
+.hero > .hero-content {
+    bottom: 40px;
+}
+
+
+.small-hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.35);
+}
+
+.small-hero .hero-content {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    z-index: 1;
+}
+
+
+.contact-section {
+    padding: 100px 50px;
+    background: #111;
+    color: white;
+    text-align: center;
+    border-top: 2px solid rgba(255, 255, 255, 0.467);
+}
+
+.contact-section h2 {
+    font-size: 28px;
+    margin-bottom: 20px;
+}
+
+.contact-section p {
+    max-width: 600px;
+    margin: 0 auto 40px;
+    font-size: 16px;
+    letter-spacing: 2px;
+    opacity: 0.8;
+}
+
+.contact-form {
+    max-width: 500px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.contact-form input,
+.contact-form textarea {
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.3);
+    padding: 15px;
+    color: white;
+    font-size: 14px;
+}
+
+.contact-form textarea {
+    resize: none;
+    height: 120px;
+}
+
+.contact-form button {
+    background: white;
+    color: #111;
+    border: none;
+    padding: 15px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.3s ease;
+}
+
+.contact-form button:hover {
+    background: #ddd;
+}
+
+
+
+@media (max-width: 900px) {
+    .hero-row {
+        flex-direction: column;
+        gap: 30px;
+    }
+
+    .small-hero {
+        height: 400px;
+    }
+}
+
+
+</style>
+</head>
+<body>
+
+<nav class="navbar">
+    <div class="logo">
+        <img src="TeePilot-Logo.png" alt="Logga">
+    </div>
+
+    <ul class="nav-links">
+        <li><a href="index.html">Hem</a></li>
+        <li><a href="about.html">Om</a></li>
+        <li><a href="#">Tjänster</a></li>
+        <li><a href="konto.html">Konto</a></li>
+    </ul>
+</nav>
+
+<section class="hero">
+    <div class="hero-content">
+        <h1>TeePilot</h1>
+        <p>Din tid, din notis..</p>
+        <a href="">Boka Nu</a>
+    </div>
+</section>
+
+<section class="hero-row">
+    
+    <div class="hero small-hero">
+        <div class="hero-content">
+            <h1>TeePilot</h1>
+            <p>Hur funkar TeePilot?</p>
+            <a href="">Läs mer</a>
+        </div>
+    </div>
+
+    <div class="hero small-hero">
+        <div class="hero-content">
+            <h1>TeePilot</h1>
+            <p>Få notis när en teetime öppnas!</p>
+            <a href="">Kom igång</a>
+        </div>
+    </div>
+
+</section>
+
+<section class="contact-section">
+    <h2>Kontakta oss</h2>
+    <p>
+        Har du frågor om TeePilot eller vill komma igång?
+        Skicka ett meddelande så hör vi av oss.
+    </p>
+
+    <form id="contact" class="contact-form" action="https://mail.google.com/mail/?view=cm&fs=1&to=dinmail@teepilot.se" method="GET" target="_blank">
+        <input type="text" name="Namn" placeholder="Namn" required>
+        <input type="email" name="E-post" placeholder="E-post" required>
+        <textarea name="Meddelande" placeholder="Meddelande" required></textarea>
+        <button type="submit">Skicka</button>
+    </form>
+
+</section>
+
+<footer>
+    <div class="footer-links">
+        <a href="about.html">Om TeePilot</a>
+        <a href="#">Villkor</a>
+        <a href="konto.html">Konto</a>
+        <a href="index.html#contact">Kontakt</a>
+    </div>
+
+    <p>© 2026 TeePilot. Alla rättigheter förbehållna.</p>
+    <img src="TeePilot-Logo.png" style="height: 50px; margin-top: 20px;">
+</footer>
+
+
+</body>
+</html>
