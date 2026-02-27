@@ -97,6 +97,41 @@
     text-align: left;
 }
 
+#toast {
+    position: fixed;
+    top: 30px;
+    right: 30px;
+    min-width: 280px;
+    padding: 18px 25px;
+    background: rgba(30, 30, 30, 0.95);
+    color: white;
+    font-size: 13px;
+    letter-spacing: 1px;
+    border-left: 4px solid #3d8a7c;
+    backdrop-filter: blur(10px);
+    transform: translateX(120%);
+    opacity: 0;
+    transition: all 0.4s ease;
+    z-index: 9999;
+}
+
+#toast.show {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+#toast.success {
+    border-left-color: #3d8a7c;
+}
+
+#toast.error {
+    border-left-color: #c0392b;
+}
+
+#toast.info {
+    border-left-color: #3498db;
+}
+
 </style>
 </head>
 
@@ -157,113 +192,206 @@
 </section>
 
 <footer>
-    <p>© 2026 TeePilot</p>
+  <div class="footer-links">
+      <a href="about.html">Om TeePilot</a>
+      <a href="#">Villkor</a>
+      <a href="konto.html">Konto</a>
+      <a href="index.html#contact">Kontakt</a>
+  </div>
+
+  <p>© 2026 TeePilot. Alla rättigheter förbehållna.</p>
+  <img src="TeePilot-Logo.png" style="height: 50px; margin-top: 20px;">
 </footer>
 
-<script>
+<div id="toast"></div>
 
-let isLogin = true;
+<script type="module">
 
-const nameInput = document.getElementById("name");
-const phoneInput = document.getElementById("phone");
-const emailInput = document.getElementById("email");
-const passwordInput = document.getElementById("password");
+    function showToast(message, type = "success") {
 
-const authBox = document.getElementById("authBox");
-const profileBox = document.getElementById("profileBox");
+          const toast = document.getElementById("toast");
 
-const profileName = document.getElementById("profileName");
-const profileEmail = document.getElementById("profileEmail");
-const profilePhone = document.getElementById("profilePhone");
+          toast.innerText = message;
+          toast.className = "";
+          toast.classList.add(type);
+          toast.classList.add("show");
 
-const loggedInUser = localStorage.getItem("loggedInUser");
-if (loggedInUser) {
-    showProfile(loggedInUser);
-}
-
-function toggleMode() {
-    isLogin = !isLogin;
-
-    document.getElementById("title").innerText =
-        isLogin ? "Logga in" : "Skapa konto";
-
-    document.querySelector(".account-box button").innerText =
-        isLogin ? "LOGGA IN" : "SKAPA KONTO";
-
-    document.querySelector(".switch-mode").innerText =
-        isLogin
-        ? "Har du inget konto? Skapa konto"
-        : "Har du redan konto? Logga in";
-
-    nameInput.style.display = isLogin ? "none" : "block";
-    phoneInput.style.display = isLogin ? "none" : "block";
-}
-
-function submitForm() {
-    const email = emailInput.value.trim();
-    const password = passwordInput.value.trim();
-
-    if (!email || !password) {
-        alert("Fyll i alla fält");
-        return;
+          setTimeout(() => {
+            toast.classList.remove("show");
+          }, 3000);
     }
 
-    if (isLogin) {
-        const user = JSON.parse(localStorage.getItem(email));
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    
+    import {
+      getAuth,
+      createUserWithEmailAndPassword,
+      signInWithEmailAndPassword,
+      signOut,
+      onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    
+    import {
+      getFirestore,
+      doc,
+      setDoc,
+      getDoc
+    } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    
+    
+    // 🔥 DIN FIREBASE CONFIG
+    const firebaseConfig = {
+      apiKey: "AIzaSyBgYD19geGqA0ahIiwarqEjQzQlgHsJTO4",
+      authDomain: "teepilot-a68cb.firebaseapp.com",
+      projectId: "teepilot-a68cb",
+      appId: "1:77764695808:web:6ed1612c078b8e5b57c5e5"
+    };
+    
+    // Initiera Firebase
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    
+    
+    // 🔹 HÄMTA ELEMENT
+    let isLogin = true;
+    
+    const nameInput = document.getElementById("name");
+    const phoneInput = document.getElementById("phone");
+    const emailInput = document.getElementById("email");
+    const passwordInput = document.getElementById("password");
+    
+    const authBox = document.getElementById("authBox");
+    const profileBox = document.getElementById("profileBox");
+    
+    const profileName = document.getElementById("profileName");
+    const profileEmail = document.getElementById("profileEmail");
+    const profilePhone = document.getElementById("profilePhone");
+    
+    
+    // 🔄 BYT MELLAN LOGIN / REGISTER
+    window.toggleMode = function() {
+    
+      isLogin = !isLogin;
+    
+      document.getElementById("title").innerText =
+        isLogin ? "Logga in" : "Skapa konto";
+    
+      document.querySelector(".account-box button").innerText =
+        isLogin ? "LOGGA IN" : "SKAPA KONTO";
+    
+      document.querySelector(".switch-mode").innerText =
+        isLogin
+          ? "Har du inget konto? Skapa konto"
+          : "Har du redan konto? Logga in";
+    
+      nameInput.style.display = isLogin ? "none" : "block";
+      phoneInput.style.display = isLogin ? "none" : "block";
+    };
+    
+    
+    // 🚀 REGISTER / LOGIN
+    window.submitForm = async function() {
+    
+      const email = emailInput.value.trim();
+      const password = passwordInput.value;
+    
+      if (!email || !password) {
+        showToast("Fyll i alla fält");
+        return;
+      }
+    
+      try {
+    
+        if (isLogin) {
 
-        if (!user || user.password !== password) {
-            alert("Fel e-post eller lösenord");
+              const userCredential =
+                await signInWithEmailAndPassword(auth, email, password);
+
+              // 🔥 Hämta användardata direkt
+              const docRef = doc(db, "users", userCredential.user.uid);
+              const docSnap = await getDoc(docRef);
+
+              if (docSnap.exists()) {
+                showProfile(docSnap.data());
+              }
+          } else {
+    
+          // 🆕 REGISTER
+          if (!nameInput.value || !phoneInput.value) {
+            showToast("Fyll i namn och telefonnummer");
             return;
-        }
-
-        localStorage.setItem("loggedInUser", email);
-        showProfile(email);
-
-    } else {
-        if (!nameInput.value || !phoneInput.value) {
-            alert("Fyll i namn och telefonnummer");
-            return;
-        }
-
-        const user = {
+          }
+    
+          const userCredential =
+            await createUserWithEmailAndPassword(auth, email, password);
+    
+          // Spara extra data i Firestore
+          await setDoc(doc(db, "users", userCredential.user.uid), {
             name: nameInput.value,
             phone: phoneInput.value,
-            email: email,
-            password: password
-        };
-
-        localStorage.setItem(email, JSON.stringify(user));
-        alert("Konto skapat! Logga in nu.");
-        toggleMode();
-    }
-}
-
-function showProfile(email) {
-    const user = JSON.parse(localStorage.getItem(email));
-
-    authBox.style.display = "none";
-    profileBox.style.display = "block";
-
-    profileName.innerText = "NAMN: " + user.name;
-    profileEmail.innerText = "E-POST: " + user.email;
-    profilePhone.innerText = "TELEFON: " + user.phone;
-
-    // Initialer
-    const initials = user.name
+            email: email
+          });
+    
+          showToast("Konto skapat!");
+          toggleMode();
+        }
+    
+      } catch (error) {
+        showToast("Fel e-post eller lösenord");
+      }
+    };
+    
+    
+    // 👤 AUTOMATISK INLOGGNING
+    onAuthStateChanged(auth, async (user) => {
+    
+      if (user) {
+    
+        const docRef = doc(db, "users", user.uid);
+        const docSnap = await getDoc(docRef);
+    
+        if (docSnap.exists()) {
+          showProfile(docSnap.data());
+        }
+    
+      } else {
+    
+        authBox.style.display = "block";
+        profileBox.style.display = "none";
+    
+      }
+    });
+    
+    
+    // 👤 VISA PROFIL
+    function showProfile(user) {
+    
+      authBox.style.display = "none";
+      profileBox.style.display = "block";
+    
+      profileName.innerText = "NAMN: " + user.name;
+      profileEmail.innerText = "E-POST: " + user.email;
+      profilePhone.innerText = "TELEFON: " + user.phone;
+    
+      const initials = user.name
         .split(" ")
         .map(n => n[0])
         .join("")
         .toUpperCase();
-
-    document.getElementById("avatar").innerText = initials;
-}
-
-
-function logout() {
-    localStorage.removeItem("loggedInUser");
-    location.reload();
-}
-</script>
+    
+      document.getElementById("avatar").innerText = initials;
+    }
+    
+    
+    // 🚪 LOGGA UT
+    window.logout = async function() {
+      await signOut(auth);
+      location.reload();
+    };
+    
+    </script>
+    
 
 </body>
 </html>
