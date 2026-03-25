@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<link rel="stylesheet" href="main.css">
+<title>Tjänster - TeePilot</title>
+
+<style>
+
+* {
+    color: white;
+}
+.page-header {
+    text-align: center;
+    padding: 100px 20px 60px;
+}
+
+.page-header h1 {
+    font-size: 42px;
+    letter-spacing: 4px;
+    margin-bottom: 20px;
+}
+
+.page-header p {
+    opacity: 0.7;
+    letter-spacing: 2px;
+}
+
+
+.service-container {
+    max-width: 800px;
+    margin: 0 auto 120px;
+    padding: 60px;
+    border: 1px solid rgba(255,255,255,0.2);
+}
+
+.service-container h2 {
+    margin-bottom: 30px;
+    letter-spacing: 3px;
+}
+
+.form-group {
+    margin-bottom: 25px;
+}
+
+label {
+    display: block;
+    margin-bottom: 10px;
+    font-size: 14px;
+    letter-spacing: 2px;
+}
+
+input, select {
+    width: 100%;
+    padding: 12px;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.3);
+    color: white;
+    font-family: 'Cinzel', serif;
+}
+
+button {
+    width: 100%;
+    padding: 15px;
+    margin-top: 20px;
+    background: white;
+    color: black;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    letter-spacing: 2px;
+    transition: 0.3s ease;
+}
+
+button:hover {
+    background: #ddd;
+}
+
+.stop-btn {
+    background: transparent;
+    color: white;
+    border: 1px solid white;
+}
+
+.stop-btn:hover {
+    background: white;
+    color: black;
+}
+
+.status-box {
+    margin-top: 40px;
+    padding: 20px;
+    border: 1px solid rgba(255,255,255,0.2);
+    font-size: 14px;
+    opacity: 0.8;
+}
+
+/* FIXA MÖRK KALENDER */
+
+.flatpickr-calendar {
+    background: #111 !important;
+    border: 1px solid rgba(255,255,255,0.3);
+}
+
+.flatpickr-months,
+.flatpickr-weekdays,
+.flatpickr-weekday,
+.flatpickr-day,
+.flatpickr-current-month,
+.flatpickr-time input,
+.flatpickr-time .flatpickr-am-pm {
+    color: white !important;
+}
+
+.flatpickr-day.selected {
+    background: white !important;
+    color: black !important;
+}
+
+.flatpickr-day:hover {
+    background: rgba(255,255,255,0.2);
+}
+
+.flatpickr-time input {
+    background: #111 !important;
+}
+
+.flatpickr-input {
+    background: transparent;
+    color: white;
+}
+
+@media (max-width: 768px) {
+    .navbar {
+        padding: 20px;
+    }
+
+    .service-container {
+        padding: 30px;
+        margin: 0 20px 80px;
+    }
+}
+
+</style>
+</head>
+<body>
+
+<nav class="navbar">
+    <div class="logo">
+        <img src="TeePilot-Logo.png" alt="Logga">
+    </div>
+
+    <ul class="nav-links">
+        <li><a href="index.html">Hem</a></li>
+        <li><a href="about.html">Om</a></li>
+        <li><a href="tjanster.html">Tjänster</a></li>
+        <li><a href="konto.html">Konto</a></li>
+    </ul>
+</nav>
+
+<section class="hero">
+    <div class="hero-content">
+        <h1>TeePilot</h1>
+        <p>Hitta en TeeTime</p>
+    </div>
+</section>
+
+<section class="page-header">
+    <h1>Bevaka Tee Time</h1>
+    <p>Välj datum och tidsspann - vi gör resten.</p>
+</section>
+
+<section class="service-container">
+
+    <h2>Starta bevakning</h2>
+
+    <div class="form-group">
+        <label>Bana</label>
+        <select id="course">
+            <option value="vasatorp">Vasatorps GK</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>Välj datum</label>
+        <input type="text" id="datePicker" placeholder="Klicka för att välja datum">
+    </div>
+    
+    <div class="form-group">
+        <label>Från</label>
+        <input type="text" id="timeFrom" placeholder="Välj starttid">
+    </div>
+    
+    <div class="form-group">
+        <label>Till</label>
+        <input type="text" id="timeTo" placeholder="Välj sluttid">
+    </div>
+
+    <button onclick="startWatch()">Starta Bevakning</button>
+    <button class="stop-btn" onclick="stopWatch()">Stoppa Bevakning</button>
+
+    <div class="status-box" id="status">
+        Ingen aktiv bevakning.
+    </div>
+
+</section>
+
+<footer>
+    <div class="footer-links">
+        <a href="about.html">Om TeePilot</a>
+        <a href="tjanster.html">Tjänster</a>
+        <a href="konto.html">Konto</a>
+        <a href="index.html#contact">Kontakt</a>
+    </div>
+
+    <p>© 2026 TeePilot. Alla rättigheter förbehållna.</p>
+    <img src="TeePilot-Logo.png" style="height: 50px; margin-top: 20px;">
+</footer>
+
+<script>
+
+flatpickr("#datePicker", {
+    minDate: "today",
+    dateFormat: "Y-m-d",
+    disableMobile: true
+});
+
+const fromPicker = flatpickr("#timeFrom", {
+    enableTime: true,
+    noCalendar: true,
+    dateFormat: "H:i",
+    time_24hr: true,
+    minuteIncrement: 10,
+    onChange: function(selectedDates, dateStr) {
+        toPicker.set("minTime", dateStr);
+    }
+});
+
+const toPicker = flatpickr("#timeTo", {
+    enableTime: true,
+    noCalendar: true,
+    dateFormat: "H:i",
+    time_24hr: true,
+    minuteIncrement: 10
+});
+
+</script>
+<script>
+
+async function startWatch() {
+
+const course = document.getElementById("course").value;
+const date = document.getElementById("datePicker").value;
+const from = document.getElementById("timeFrom").value;
+const to = document.getElementById("timeTo").value;
+
+const golfId = prompt("Skriv ditt Golf-ID");
+const password = prompt("Skriv ditt MinGolf lösenord");
+
+const email = localStorage.getItem("userEmail");
+
+const data = {
+    course,
+    date,
+    from,
+    to,
+    golfId,
+    password,
+    email
+};
+
+await fetch("https://din-app.onrender.com/start", {
+    method: "POST",
+    headers: {
+        "Content-Type": "application/json"
+    },
+    body: JSON.stringify(data)
+});
+
+document.getElementById("status").innerText =
+    `Bevakning aktiv: ${from} - ${to} (${date})`;
+}
+
+async function stopWatch() {
+
+    await fetch("http://" + window.location.hostname + "https://din-app.onrender.com/start", {
+        method: "POST"
+    });
+
+    document.getElementById("status").innerText =
+        "Bevakning stoppad.";
+}
+
+async function updateStatus() {
+
+try {
+    const res = await fetch("http://" + window.location.hostname + ":3000/status");
+    const data = await res.json();
+
+    document.getElementById("status").innerText = data.status;
+
+} catch (err) {
+    console.log("Kunde inte hämta status");
+}
+}
+
+setInterval(updateStatus, 5000);
+
+updateStatus();
+</script>
+</body>
+</html>
