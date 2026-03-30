@@ -6,6 +6,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<link rel="icon" type="image/png" sizes="128x128" href="TeePilot-Logo.png">
 <link rel="stylesheet" href="main.css">
 <title>Tjänster - TeePilot</title>
 
@@ -199,7 +200,10 @@ button:hover {
         <label>Till</label>
         <input type="text" id="timeTo" placeholder="Välj sluttid">
     </div>
-
+    <div class="form-group">
+        <label>Lösenord(Min Golf)</label>
+        <input type="password" id="golfPassword" placeholder="Min Golf lösenord">
+    </div>
     <button onclick="startWatch()">Starta Bevakning</button>
     <button class="stop-btn" onclick="stopWatch()">Stoppa Bevakning</button>
 
@@ -250,67 +254,75 @@ const toPicker = flatpickr("#timeTo", {
 
 </script>
 <script>
-
-async function startWatch() {
-
-const course = document.getElementById("course").value;
-const date = document.getElementById("datePicker").value;
-const from = document.getElementById("timeFrom").value;
-const to = document.getElementById("timeTo").value;
-
-const golfId = prompt("Skriv ditt Golf-ID");
-const password = prompt("Skriv ditt MinGolf lösenord");
-
-const email = localStorage.getItem("userEmail");
-
-const data = {
-    course,
-    date,
-    from,
-    to,
-    golfId,
-    password,
-    email
-};
-
-await fetch("https://din-app.onrender.com/start", {
-    method: "POST",
-    headers: {
-        "Content-Type": "application/json"
-    },
-    body: JSON.stringify(data)
-});
-
-document.getElementById("status").innerText =
-    `Bevakning aktiv: ${from} - ${to} (${date})`;
-}
-
-async function stopWatch() {
-
-    await fetch("http://" + window.location.hostname + "https://din-app.onrender.com/start", {
-        method: "POST"
+    
+    async function startWatch() {
+    
+    const course = document.getElementById("course").value;
+    const date = document.getElementById("datePicker").value;
+    const from = document.getElementById("timeFrom").value;
+    const to = document.getElementById("timeTo").value;
+    
+    // hämtar datan flr puppeter
+    const golfId = localStorage.getItem("userGolfId");
+    const password = document.getElementById("golfPassword").value;
+    const email = localStorage.getItem("userEmail");
+    
+    // en check ifall konto e inloggat
+    if (!golfId || !password) {
+        alert("Fyll i lösenord och var inloggad");
+        return;
+    }
+    
+    const data = {
+        course,
+        date,
+        from,
+        to,
+        golfId,
+        password,
+        email
+    };
+    
+    await fetch("https://teepilot-server.onrender.com/start", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(data)
     });
-
+    
     document.getElementById("status").innerText =
-        "Bevakning stoppad.";
-}
-
-async function updateStatus() {
-
-try {
-    const res = await fetch("http://" + window.location.hostname + ":3000/status");
-    const data = await res.json();
-
-    document.getElementById("status").innerText = data.status;
-
-} catch (err) {
-    console.log("Kunde inte hämta status");
-}
-}
-
-setInterval(updateStatus, 5000);
-
-updateStatus();
-</script>
+        `Bevakning aktiv: ${from} - ${to} (${date})`;
+    }
+    
+    
+    async function stopWatch() {
+    
+        await fetch("https://teepilot-server.onrender.com/stop", {
+            method: "POST"
+        });
+    
+        document.getElementById("status").innerText =
+            "Bevakning stoppad.";
+    }
+    
+    
+    async function updateStatus() {
+    
+    try {
+        const res = await fetch("https://teepilot-server.onrender.com/status");
+        const data = await res.json();
+    
+        document.getElementById("status").innerText = data.status;
+    
+    } catch (err) {
+        console.log("Kunde inte hämta status");
+    }
+    }
+    
+    setInterval(updateStatus, 5000);
+    updateStatus();
+    
+    </script>
 </body>
 </html>

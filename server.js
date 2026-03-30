@@ -1,5 +1,5 @@
 const { Resend } = require("resend");
-const resend = new Resend("re_LsNw1rqb_JkfuAXhJauGjNLcMaS3ihRthno");
+const resend = new Resend("re_LHA5wWw6_86BChTR6dCeieuj3W9y3z85U");
 
 const express = require("express");
 const cors = require("cors");
@@ -19,14 +19,13 @@ let status = "Ingen aktiv bevakning";
 async function sendEmail(email, time) {
     try {
         await resend.emails.send({
-            from: "onboarding@resend.dev",
+            from: "TeePilot <onboarding@resend.dev>",
             to: email,
-            subject: "TeeTime hittad ⛳",
+            subject: "TeeTime hittad ⛳!",
             html: `
-                <div style="font-family:Arial;padding:20px">
+                <div>
                     <h2>TeeTime hittad!</h2>
-                    <p>En tid finns kl <b>${time}</b></p>
-                    <p>Gå in på MinGolf för att boka.</p>
+                    <p>Tid: ${time}</p>
                 </div>
             `
         });
@@ -40,14 +39,14 @@ async function sendEmail(email, time) {
 
 async function checkTimes() {
 
-    console.log("🔥 checkTimes körs");
+    console.log("checkTimes körs");
     if (!watchConfig) return;
 
     console.log("Checking tee times...");
 
     const browser = await puppeteer.launch({
-        headless: true,
-        args: ["--no-sandbox"]
+        args: ["--no-sandbox", "--disable-setuid-sandbox"],
+        headless: "new"
     });
 
     const page = await browser.newPage();
@@ -163,7 +162,12 @@ app.get("/status", (req, res) => {
     res.json({ status });
 });
 
+app.get("/", (req, res) => {
+    res.send("Servern funkar");
+});
 
-app.listen(3000, () => {
-    console.log("Server running on port 3000");
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+    console.log("Server running on port", PORT);
 });

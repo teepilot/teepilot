@@ -215,201 +215,217 @@
 
 <script type="module">
 
-    function showToast(message, type = "success") {
-
-          const toast = document.getElementById("toast");
-
-          toast.innerText = message;
-          toast.className = "";
-          toast.classList.add(type);
-          toast.classList.add("show");
-
-          setTimeout(() => {
-            toast.classList.remove("show");
-          }, 3000);
+  function showToast(message, type = "success") {
+    const toast = document.getElementById("toast");
+  
+    toast.innerText = message;
+    toast.className = "";
+    toast.classList.add(type);
+    toast.classList.add("show");
+  
+    setTimeout(() => {
+      toast.classList.remove("show");
+    }, 3000);
+  }
+  
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+  
+  import {
+    getAuth,
+    createUserWithEmailAndPassword,
+    signInWithEmailAndPassword,
+    signOut,
+    onAuthStateChanged
+  } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+  
+  import {
+    getFirestore,
+    doc,
+    setDoc,
+    getDoc
+  } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+  
+  // FIREBASE config
+  const firebaseConfig = {
+    apiKey: "AIzaSyBgYD19geGqA0ahIiwarqEjQzQlgHsJTO4",
+    authDomain: "teepilot-a68cb.firebaseapp.com",
+    projectId: "teepilot-a68cb",
+    appId: "1:77764695808:web:6ed1612c078b8e5b57c5e5"
+  };
+  
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+  
+  let isLogin = true;
+  
+  const nameInput = document.getElementById("name");
+  const phoneInput = document.getElementById("phone");
+  const emailInput = document.getElementById("email");
+  const passwordInput = document.getElementById("password");
+  const golfIdInput = document.getElementById("golfId");
+  const golfNote = document.getElementById("golfNote");
+  
+  const authBox = document.getElementById("authBox");
+  const profileBox = document.getElementById("profileBox");
+  
+  const profileName = document.getElementById("profileName");
+  const profileEmail = document.getElementById("profileEmail");
+  const profilePhone = document.getElementById("profilePhone");
+  const profileGolfId = document.getElementById("profileGolfId");
+  
+  // Toggle login/register
+  window.toggleMode = function() {
+  
+    isLogin = !isLogin;
+  
+    document.getElementById("title").innerText =
+      isLogin ? "Logga in" : "Skapa konto";
+  
+    document.querySelector(".account-box button").innerText =
+      isLogin ? "LOGGA IN" : "SKAPA KONTO";
+  
+    document.querySelector(".switch-mode").innerText =
+      isLogin
+        ? "Har du inget konto? Skapa konto"
+        : "Har du redan konto? Logga in";
+  
+    nameInput.style.display = isLogin ? "none" : "block";
+    phoneInput.style.display = isLogin ? "none" : "block";
+    golfIdInput.style.display = isLogin ? "none" : "block";
+    golfNote.style.display = isLogin ? "none" : "block";
+  };
+  
+  // LOGIN / SIGNUP
+  window.submitForm = async function() {
+  
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+  
+    if (!email || !password) {
+      showToast("Fyll i alla fält");
+      return;
     }
-
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    
-    import {
-      getAuth,
-      createUserWithEmailAndPassword,
-      signInWithEmailAndPassword,
-      signOut,
-      onAuthStateChanged
-    } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-    
-    import {
-      getFirestore,
-      doc,
-      setDoc,
-      getDoc
-    } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-    
-    
-    // FIREBASE info o api
-    const firebaseConfig = {
-      apiKey: "AIzaSyBgYD19geGqA0ahIiwarqEjQzQlgHsJTO4",
-      authDomain: "teepilot-a68cb.firebaseapp.com",
-      projectId: "teepilot-a68cb",
-      appId: "1:77764695808:web:6ed1612c078b8e5b57c5e5"
-    };
-    
-    // Laddar ba in Firebase
-    const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const db = getFirestore(app);
-    
-    
-   
-    let isLogin = true;
-    
-    const nameInput = document.getElementById("name");
-    const phoneInput = document.getElementById("phone");
-    const emailInput = document.getElementById("email");
-    const passwordInput = document.getElementById("password");
-    const golfIdInput = document.getElementById("golfId");
-    const golfNote = document.getElementById("golfNote");
-    
-    const authBox = document.getElementById("authBox");
-    const profileBox = document.getElementById("profileBox");
-    
-    const profileName = document.getElementById("profileName");
-    const profileEmail = document.getElementById("profileEmail");
-    const profilePhone = document.getElementById("profilePhone");
-    const profileGolfId = document.getElementById("profileGolfId");
-    
-    
-    // Byter mellan logga in o ens inlogg sida
-    window.toggleMode = function() {
-
-      isLogin = !isLogin;
-
-      document.getElementById("title").innerText =
-        isLogin ? "Logga in" : "Skapa konto";
-
-      document.querySelector(".account-box button").innerText =
-        isLogin ? "LOGGA IN" : "SKAPA KONTO";
-
-      document.querySelector(".switch-mode").innerText =
-        isLogin
-          ? "Har du inget konto? Skapa konto"
-          : "Har du redan konto? Logga in";
-
-      // Dessa visas bara när kontot e skapat
-      nameInput.style.display = isLogin ? "none" : "block";
-      phoneInput.style.display = isLogin ? "none" : "block";
-      golfIdInput.style.display = isLogin ? "none" : "block";
-      golfNote.style.display = isLogin ? "none" : "block";
-
-      };
-    
-    
-    window.submitForm = async function() {
-    
-      const email = emailInput.value.trim();
-      const password = passwordInput.value;
-    
-      if (!email || !password) {
-        showToast("Fyll i alla fält");
-        return;
-      }
-    
-      try {
-    
-        if (isLogin) {
-
-              const userCredential =
-                await signInWithEmailAndPassword(auth, email, password);
-
-              // Hämtar ba användardata
-              const docRef = doc(db, "users", userCredential.user.uid);
-              const docSnap = await getDoc(docRef);
-
-              if (docSnap.exists()) {
-                showProfile(docSnap.data());
-              }
-          } else {
-    
-          
-          if (!nameInput.value || !phoneInput.value) {
-            showToast("Fyll i namn och telefonnummer");
-            return;
-          }
-    
-          const userCredential =
-            await createUserWithEmailAndPassword(auth, email, password);
-    
-          // För o spara extra data i firebase
-          await setDoc(doc(db, "users", userCredential.user.uid), {
-            name: nameInput.value,
-            phone: phoneInput.value,
-            email: email,
-            golfId: golfIdInput.value
-          });
-    
-          showToast("Konto skapat!");
-          toggleMode();
-        }
-    
-      } catch (error) {
-        showToast("Fel e-post eller lösenord");
-      }
-    };
-    
-    
-    // Auto inlogg // funkar hyfsat(kan bli bättre)
-    onAuthStateChanged(auth, async (user) => {
-    
-      if (user) {
-    
-        const docRef = doc(db, "users", user.uid);
+  
+    try {
+  
+      if (isLogin) {
+  
+        const userCredential =
+          await signInWithEmailAndPassword(auth, email, password);
+  
+        const docRef = doc(db, "users", userCredential.user.uid);
         const docSnap = await getDoc(docRef);
-    
+  
         if (docSnap.exists()) {
           showProfile(docSnap.data());
+        } else {
+          showToast("Ingen användardata hittades");
         }
-    
+  
       } else {
-    
-        authBox.style.display = "block";
-        profileBox.style.display = "none";
-    
+  
+        if (!nameInput.value || !phoneInput.value) {
+          showToast("Fyll i namn och telefonnummer");
+          return;
+        }
+  
+        const userCredential =
+          await createUserWithEmailAndPassword(auth, email, password);
+  
+        const userData = {
+          name: nameInput.value,
+          phone: phoneInput.value,
+          email: email,
+          golfId: golfIdInput.value
+        };
+  
+        await setDoc(doc(db, "users", userCredential.user.uid), userData);
+  
+        // FIX: visa direkt
+        showProfile(userData);
+  
+        showToast("Konto skapat!");
+  
       }
-    });
-    
-    
-    // Visa ens profil
-    function showProfile(user) {
-    
-      authBox.style.display = "none";
-      profileBox.style.display = "block";
-    
-      profileName.innerText = "NAMN: " + user.name;
-      profileEmail.innerText = "E-POST: " + user.email;
-      profilePhone.innerText = "TELEFON: " + user.phone;
-      profileGolfId.innerText = "GOLF-ID: " + user.golfId;
-      
-      localStorage.setItem("userPhone", user.phone);
-      localStorage.setItem("userEmail", user.email);
-      
-      const initials = user.name
-        .split(" ")
-        .map(n => n[0])
-        .join("")
-        .toUpperCase();
-    
-      document.getElementById("avatar").innerText = initials;
+  
+    } catch (error) {
+      console.log(error);
+      showToast(error.message);
     }
-    
-    
-    // Logga ut // ksk förbättra layout lite..
-    window.logout = async function() {
-      await signOut(auth);
-      location.reload();
-    };
-    
-    </script>
+  };
+  
+  // AUTO LOGIN
+  onAuthStateChanged(auth, async (user) => {
+  
+    if (user) {
+  
+      try {
+        const docRef = doc(db, "users", user.uid);
+        const docSnap = await getDoc(docRef);
+  
+        if (docSnap.exists()) {
+          showProfile(docSnap.data());
+        } else {
+
+        showToast("Ingen användardata hittades, skapar profil...");
+
+        const fallbackData = {
+          name: "Användare",
+          email: user.email,
+          phone: "",
+          golfId: ""
+        };
+
+        await setDoc(doc(db, "users", user.uid), fallbackData);
+
+        showProfile(fallbackData);
+        }
+  
+      } catch (err) {
+        console.log(err);
+        showToast("Fel vid hämtning av konto");
+      }
+  
+    } else {
+  
+      authBox.style.display = "block";
+      profileBox.style.display = "none";
+  
+    }
+  });
+  
+  // SHOW PROFILE
+  function showProfile(user) {
+  
+    authBox.style.display = "none";
+    profileBox.style.display = "block";
+  
+    profileName.innerText = "NAMN: " + user.name;
+    profileEmail.innerText = "E-POST: " + user.email;
+    profilePhone.innerText = "TELEFON: " + user.phone;
+    profileGolfId.innerText = "GOLF-ID: " + user.golfId;
+  
+    localStorage.setItem("userPhone", user.phone);
+    localStorage.setItem("userEmail", user.email);
+    localStorage.setItem("userGolfId", user.golfId);
+  
+    const initials = (user.name || "TP")
+      .split(" ")
+      .map(n => n[0])
+      .join("")
+      .toUpperCase();
+  
+    document.getElementById("avatar").innerText = initials;
+  }
+  
+  // LOGOUT
+  window.logout = async function() {
+    await signOut(auth);
+    location.reload();
+  };
+  
+</script>
     
 
 </body>

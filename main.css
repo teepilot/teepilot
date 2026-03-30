@@ -121,3 +121,126 @@ footer p {
 .footer-links a:hover {
     opacity: 1;
 }
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Cinzel', serif;
+    letter-spacing: 3px;
+}
+
+body {
+    background: #111;
+}
+
+.navbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    padding: 20px 50px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(12px); 
+    z-index: 1000;
+}
+
+.logo img {
+    height: 50px;
+}
+
+.nav-links {
+    list-style: none;
+    display: flex;
+    gap: 30px;
+}
+
+.nav-links a {
+    text-decoration: none;
+    color: white;
+}
+
+
+.hero {
+    height: 80vh;
+    background: url('Hero.jpg') no-repeat center center/cover;
+    position: relative;
+    color: white;
+}
+
+.hero-content {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+}
+
+.hero > .hero-content {
+    bottom: 40px;
+}
+
+.hero h1 {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.hero p {
+    margin-top: 20px;
+    margin-bottom: 20px;
+    font-size: 30px;
+    font-weight: 800;
+}
+
+.hero a {
+    position: relative;
+    text-decoration: none;
+    color: white;
+    font-size: 20px;
+    font-weight: 600;
+    padding-bottom: 5px;
+}
+
+.hero a::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    width: 0;
+    height: 3px;
+    background: white;
+    transition: all 0.4s ease;
+    transform: translateX(-50%);
+}
+
+footer {
+    background: #3d8a7c;
+    padding: 40px 50px;
+    text-align: center;
+    color: white;
+    border-top: 2px solid rgba(255, 255, 255, 0.467);
+}
+
+footer p {
+    font-size: 12px;
+    letter-spacing: 2px;
+    opacity: 0.6;
+}
+
+.footer-links {
+    margin-bottom: 20px;
+}
+
+.footer-links a {
+    color: white;
+    text-decoration: none;
+    margin: 0 15px;
+    font-size: 12px;
+    opacity: 0.8;
+}
+
+.footer-links a:hover {
+    opacity: 1;
+}

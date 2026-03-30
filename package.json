@@ -16,7 +16,7 @@
     "express": "^5.2.1",
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.3",
-    "puppeteer": "^24.39.0",
+    "puppeteer": "^24.40.0",
     "resend": "^6.9.4",
     "twilio": "^5.13.0"
   }
