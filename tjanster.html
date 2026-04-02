@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 <!DOCTYPE html>
 <html lang="sv">
 <head>
@@ -200,7 +201,10 @@ button:hover {
         <label>Till</label>
         <input type="text" id="timeTo" placeholder="Välj sluttid">
     </div>
-
+    <div class="form-group">
+        <label>Lösenord(Min Golf)</label>
+        <input type="password" id="golfPassword" placeholder="Min Golf lösenord">
+    </div>
     <button onclick="startWatch()">Starta Bevakning</button>
     <button class="stop-btn" onclick="stopWatch()">Stoppa Bevakning</button>
 
@@ -251,7 +255,7 @@ const toPicker = flatpickr("#timeTo", {
 
 </script>
 <script>
-
+    
     async function startWatch() {
     
     const course = document.getElementById("course").value;
@@ -259,14 +263,14 @@ const toPicker = flatpickr("#timeTo", {
     const from = document.getElementById("timeFrom").value;
     const to = document.getElementById("timeTo").value;
     
-    // auto hämtar datan
+    // hämtar datan flr puppeter
     const golfId = localStorage.getItem("userGolfId");
-    const password = localStorage.getItem("userPassword");
+    const password = document.getElementById("golfPassword").value;
     const email = localStorage.getItem("userEmail");
     
     // en check ifall konto e inloggat
-    if (!golfId || !password || !email) {
-        alert("Du måste vara inloggad på konto-sidan först");
+    if (!golfId || !password) {
+        alert("Fyll i lösenord och var inloggad");
         return;
     }
     
