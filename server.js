@@ -47,10 +47,10 @@ async function checkTimes() {
     const puppeteer = require("puppeteer");
 
     const browser = await puppeteer.launch({
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    headless: true,
-    executablePath: puppeteer.executablePath()
-    });
+        args: ["--no-sandbox", "--disable-setuid-sandbox"],
+        headless: true,
+        channel: "chrome"
+      });
 
     const page = await browser.newPage();
 
