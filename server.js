@@ -4,8 +4,9 @@ const resend = new Resend("re_LHA5wWw6_86BChTR6dCeieuj3W9y3z85U");
 const express = require("express");
 const cors = require("cors");
 const puppeteer = require("puppeteer-core");
-const chromium = require("chrome-aws-lambda");
+const chromium = require("@sparticuz/chromium");
 const cron = require("node-cron");
+
 
 const app = express();
 
