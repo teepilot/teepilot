@@ -3,7 +3,8 @@ const resend = new Resend("re_LHA5wWw6_86BChTR6dCeieuj3W9y3z85U");
 
 const express = require("express");
 const cors = require("cors");
-const puppeteer = require("puppeteer");
+const puppeteer = require("puppeteer-core");
+const chromium = require("chrome-aws-lambda");
 const cron = require("node-cron");
 
 const app = express();
@@ -22,12 +23,7 @@ async function sendEmail(email, time) {
             from: "TeePilot <onboarding@resend.dev>",
             to: email,
             subject: "TeeTime hittad ⛳!",
-            html: `
-                <div>
-                    <h2>TeeTime hittad!</h2>
-                    <p>Tid: ${time}</p>
-                </div>
-            `
+            html: `<h2>TeeTime hittad!</h2><p>Tid: ${time}</p>`
         });
 
         console.log("Mail sent to", email);
@@ -44,13 +40,12 @@ async function checkTimes() {
 
     console.log("Checking tee times...");
 
-    const puppeteer = require("puppeteer");
-
     const browser = await puppeteer.launch({
-        args: ["--no-sandbox", "--disable-setuid-sandbox"],
-        headless: true,
-        channel: "chrome"
-      });
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath,
+        headless: chromium.headless
+    });
 
     const page = await browser.newPage();
 
@@ -115,20 +110,15 @@ async function checkTimes() {
             watchConfig = null;
 
         } else {
-
             console.log("No times in range");
-
         }
 
     } catch (err) {
-
         console.log("Error:", err);
-
     }
 
     await browser.close();
 }
-
 
 app.post("/start", (req, res) => {
 
@@ -139,13 +129,11 @@ app.post("/start", (req, res) => {
 
     if (job) job.stop();
 
-    checkTimes(); // kör direkt
+    checkTimes();
     job = cron.schedule("*/15 * * * *", checkTimes);
 
     res.sendStatus(200);
-
 });
-
 
 app.post("/stop", (req, res) => {
 
@@ -157,9 +145,7 @@ app.post("/stop", (req, res) => {
     console.log("Watch stopped");
 
     res.sendStatus(200);
-
 });
-
 
 app.get("/status", (req, res) => {
     res.json({ status });
