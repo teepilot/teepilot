@@ -40,13 +40,15 @@ async function checkTimes() {
 
     console.log("Checking tee times...");
 
-    const executablePath = await chromium.executablePath;
-    console.log("Chromium path:", executablePath);
+    console.log("Chromium path:", await chromium.executablePath);
+    const chromium = require("chrome-aws-lambda");
+    const puppeteer = require("puppeteer-core");
+
     const browser = await puppeteer.launch({
-        args: chromium.args,
-        executablePath: await chromium.executablePath || "/tmp/chromium",
-        headless: true
-      }); 
+    args: chromium.args,
+    executablePath: await chromium.executablePath || "/usr/bin/chromium",
+    headless: chromium.headless,
+    });
 
     const page = await browser.newPage();
 
