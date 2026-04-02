@@ -40,12 +40,13 @@ async function checkTimes() {
 
     console.log("Checking tee times...");
 
+    const executablePath = await chromium.executablePath;
+    console.log("Chromium path:", executablePath);
     const browser = await puppeteer.launch({
         args: chromium.args,
-        defaultViewport: chromium.defaultViewport,
-        executablePath: await chromium.executablePath,
-        headless: chromium.headless
-    });
+        executablePath: await chromium.executablePath || "/tmp/chromium",
+        headless: true
+      }); 
 
     const page = await browser.newPage();
 
