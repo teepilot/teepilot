@@ -39,12 +39,15 @@ async function checkTimes() {
     if (!watchConfig) return;
 
     console.log("Checking tee times...");
+    const isLocal = process.env.NODE_ENV !== "production";
 
-    const puppeteer = require("puppeteer");
+    const puppeteer = require("puppeteer-core");
+    const chromium = require("@sparticuz/chromium");
 
     const browser = await puppeteer.launch({
-    headless: true,
-    args: ["--no-sandbox", "--disable-setuid-sandbox"]
+        args: chromium.args,
+        executablePath: await chromium.executablePath(),
+        headless: true
     });
     const page = await browser.newPage();
 
