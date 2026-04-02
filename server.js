@@ -44,10 +44,13 @@ async function checkTimes() {
 
     console.log("Checking tee times...");
 
+    const puppeteer = require("puppeteer");
+
     const browser = await puppeteer.launch({
-        args: ["--no-sandbox", "--disable-setuid-sandbox"],
-        headless: true
-      });
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    headless: true,
+    executablePath: puppeteer.executablePath()
+    });
 
     const page = await browser.newPage();
 
