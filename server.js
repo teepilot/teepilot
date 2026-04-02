@@ -46,8 +46,7 @@ async function checkTimes() {
 
     const browser = await puppeteer.launch({
         args: ["--no-sandbox", "--disable-setuid-sandbox"],
-        headless: true,
-        executablePath: "/usr/bin/google-chrome"
+        headless: true
       });
 
     const page = await browser.newPage();
