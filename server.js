@@ -82,23 +82,46 @@ async function checkTimes() {
 
         await sleep(3000);
 
-        // 🍪 FIX: acceptera cookies
+        // 🍪 COOKIE FIX (iframe)
         console.log("Handling cookies...");
 
-        try {
-            await page.waitForSelector("#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll", { timeout: 10000 });
+        const cookieFrame = page.frames().find(f =>
+            f.url().includes("consentcdn.cookiebot.com")
+        );
 
-            await page.click("#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll");
+        if (cookieFrame) {
+            try {
+                await cookieFrame.waitForSelector("button", { timeout: 10000 });
 
-            console.log("Cookies accepted");
+                const buttons = await cookieFrame.$$("button");
 
-            await sleep(3000);
+                for (const btn of buttons) {
+                    const text = await cookieFrame.evaluate(el => el.innerText, btn);
 
-        } catch (e) {
-            console.log("No cookie popup found");
+                    if (
+                        text.toLowerCase().includes("allow all") ||
+                        text.toLowerCase().includes("acceptera")
+                    ) {
+                        await btn.click();
+                        console.log("Cookies accepted!");
+                        break;
+                    }
+                }
+
+                await sleep(3000);
+
+            } catch (err) {
+                console.log("Cookie click failed:", err);
+            }
+        } else {
+            console.log("No cookie frame found");
         }
 
-        // 🔍 HÄMTA riktiga inputs EFTER cookies
+        // 🔥 NU ska login inputs finnas
+        console.log("Waiting for login inputs...");
+        await page.waitForSelector("input[type='password']", { timeout: 60000 });
+
+        // DEBUG
         const inputs = await page.evaluate(() => {
             return Array.from(document.querySelectorAll("input"))
                 .map(el => ({
@@ -111,32 +134,20 @@ async function checkTimes() {
 
         console.log("REAL Inputs:", inputs);
 
-        // 🔍 hitta rätt frame
-        let target = page;
-
-        const frames = page.frames();
-        console.log("Frames:", frames.map(f => f.url()));
-
-        for (const frame of frames) {
-            const hasInput = await frame.$("input");
-            if (hasInput) {
-                target = frame;
-                console.log("Using frame:", frame.url());
-                break;
-            }
-        }
-
         console.log("Typing login...");
 
-        await target.waitForSelector("input", { timeout: 60000 });
+        const allInputs = await page.$$("input:not([type='checkbox'])");
 
-        // 🔥 enklare selectors (mer robust)
-        await target.type("input[type='text']", watchConfig.golfId, { delay: 50 });
-        await target.type("input[type='password']", watchConfig.password, { delay: 50 });
+        if (allInputs.length >= 2) {
+            await allInputs[0].type(watchConfig.golfId, { delay: 50 });
+            await allInputs[1].type(watchConfig.password, { delay: 50 });
+        } else {
+            throw new Error("Could not find login inputs");
+        }
 
         console.log("Click login...");
 
-        const loginBtn = await target.$("button");
+        const loginBtn = await page.$("button");
 
         if (loginBtn) {
             await Promise.all([
