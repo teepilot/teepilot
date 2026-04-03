@@ -7,7 +7,6 @@ const puppeteer = require("puppeteer-core");
 const chromium = require("@sparticuz/chromium");
 const cron = require("node-cron");
 
-
 const app = express();
 
 app.use(cors());
@@ -28,7 +27,6 @@ async function sendEmail(email, time) {
         });
 
         console.log("Mail sent to", email);
-
     } catch (err) {
         console.log("Email error:", err);
     }
@@ -54,44 +52,42 @@ async function checkTimes() {
 
     const page = await browser.newPage();
 
-    await page.setExtraHTTPHeaders({
-        "user-agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    });
-    
-
     page.setDefaultNavigationTimeout(60000);
 
     try {
 
         console.log("Going to login page...");
         await page.goto("https://mingolf.golf.se/", {
-            waitUntil: "networkidle2",
+            waitUntil: "domcontentloaded",
             timeout: 60000
         });
 
-        console.log("Typing login...");
-        await page.waitForSelector("#username");
-        await page.type("#username", watchConfig.golfId);
-        await page.type("#password", watchConfig.password);
+        await page.waitForTimeout(6000);
+
+        console.log("Looking for login fields...");
+
+        await page.waitForSelector("input", { timeout: 60000 });
+
+        // skriv login
+        await page.type("input[type='text']", watchConfig.golfId);
+        await page.type("input[type='password']", watchConfig.password);
 
         console.log("Click login...");
+
         await Promise.all([
             page.click("button[type='submit']"),
-            page.waitForNavigation({ waitUntil: "networkidle2", timeout: 60000 })
+            page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 60000 })
         ]);
 
         console.log("Logged in");
 
         console.log("Going to booking...");
-        await page.goto("https://mingolf.golf.se/", {
+        await page.goto("https://mingolf.golf.se/bokning/#/", {
             waitUntil: "domcontentloaded",
             timeout: 60000
         });
-        
 
-        await page.waitForTimeout(3000);
+        await page.waitForTimeout(5000);
 
         console.log("Searching club...");
         await page.type("input", "Vasatorp");
@@ -103,7 +99,7 @@ async function checkTimes() {
             if (club) club.click();
         });
 
-        await page.waitForTimeout(2000);
+        await page.waitForTimeout(3000);
 
         console.log("Selecting course...");
         await page.evaluate(() => {
@@ -112,7 +108,7 @@ async function checkTimes() {
             if (course) course.click();
         });
 
-        await page.waitForTimeout(3000);
+        await page.waitForTimeout(5000);
 
         console.log("Getting times...");
         const times = await page.evaluate(() => {
