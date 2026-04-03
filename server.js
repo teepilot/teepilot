@@ -7,7 +7,6 @@ const puppeteer = require("puppeteer-core");
 const chromium = require("@sparticuz/chromium");
 const cron = require("node-cron");
 
-
 const app = express();
 
 app.use(cors());
@@ -39,27 +38,31 @@ async function checkTimes() {
     console.log("checkTimes körs");
     if (!watchConfig) return;
 
-    console.log("Checking tee times...");
-
     const browser = await puppeteer.launch({
         args: [
             ...chromium.args,
             "--no-sandbox",
             "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage"
+            "--disable-dev-shm-usage",
+            "--disable-blink-features=AutomationControlled"
         ],
         executablePath: await chromium.executablePath(),
-        headless: true
+        headless: "new"
     });
 
     const page = await browser.newPage();
+
+    await page.evaluateOnNewDocument(() => {
+        Object.defineProperty(navigator, 'webdriver', {
+            get: () => false,
+        });
+    });
 
     await page.setExtraHTTPHeaders({
         "user-agent":
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     });
-    
 
     page.setDefaultNavigationTimeout(60000);
 
@@ -67,35 +70,82 @@ async function checkTimes() {
 
         console.log("Going to login page...");
         await page.goto("https://mingolf.golf.se/", {
-            waitUntil: "networkidle2",
+            waitUntil: "domcontentloaded",
             timeout: 60000
         });
 
+        console.log("Current URL:", page.url());
+
+        // vänta lite extra (MinGolf laddar segt)
+        await page.waitForTimeout(5000);
+
+        // DEBUG: se inputs
+        const inputs = await page.evaluate(() => {
+            return Array.from(document.querySelectorAll("input"))
+                .map(el => ({
+                    id: el.id,
+                    name: el.name,
+                    type: el.type,
+                    placeholder: el.placeholder
+                }));
+        });
+
+        console.log("Inputs found:", inputs);
+
+        // 🔍 hitta rätt frame (om finns)
+        let target = page;
+
+        const frames = page.frames();
+        console.log("Frames:", frames.map(f => f.url()));
+
+        for (const frame of frames) {
+            const hasInput = await frame.$("input");
+            if (hasInput) {
+                target = frame;
+                console.log("Using frame:", frame.url());
+                break;
+            }
+        }
+
         console.log("Typing login...");
-        await page.waitForSelector("#username");
-        await page.type("#username", watchConfig.golfId);
-        await page.type("#password", watchConfig.password);
+
+        await target.waitForSelector("input", { timeout: 60000 });
+
+        // testa flera selectors (failsafe)
+        const usernameSelector = "input[type='text'], input[name='username']";
+        const passwordSelector = "input[type='password']";
+
+        await target.type(usernameSelector, watchConfig.golfId, { delay: 50 });
+        await target.type(passwordSelector, watchConfig.password, { delay: 50 });
 
         console.log("Click login...");
-        await Promise.all([
-            page.click("button[type='submit']"),
-            page.waitForNavigation({ waitUntil: "networkidle2", timeout: 60000 })
-        ]);
 
-        console.log("Logged in");
+        const loginBtn = await target.$("button[type='submit'], button");
+
+        if (loginBtn) {
+            await Promise.all([
+                loginBtn.click(),
+                page.waitForNavigation({ waitUntil: "networkidle2", timeout: 60000 }).catch(() => {})
+            ]);
+        } else {
+            console.log("No login button found");
+        }
+
+        console.log("Logged in maybe...");
+
+        await page.waitForTimeout(5000);
 
         console.log("Going to booking...");
         await page.goto("https://mingolf.golf.se/", {
             waitUntil: "domcontentloaded",
             timeout: 60000
         });
-        
 
-        await page.waitForTimeout(3000);
+        await page.waitForTimeout(5000);
 
         console.log("Searching club...");
         await page.type("input", "Vasatorp");
-        await page.waitForTimeout(2000);
+        await page.waitForTimeout(3000);
 
         await page.evaluate(() => {
             const club = [...document.querySelectorAll("div")]
@@ -103,16 +153,16 @@ async function checkTimes() {
             if (club) club.click();
         });
 
-        await page.waitForTimeout(2000);
+        await page.waitForTimeout(3000);
 
         console.log("Selecting course...");
         await page.evaluate(() => {
             const course = [...document.querySelectorAll("div")]
-                .find(el => el.innerText.includes("Park Course - 12 hål"));
+                .find(el => el.innerText.includes("Park Course"));
             if (course) course.click();
         });
 
-        await page.waitForTimeout(3000);
+        await page.waitForTimeout(5000);
 
         console.log("Getting times...");
         const times = await page.evaluate(() => {
