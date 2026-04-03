@@ -17,7 +17,6 @@ let watchConfig = null;
 
 let status = "Ingen aktiv bevakning";
 
-// 🔧 sleep istället för waitForTimeout
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -81,9 +80,25 @@ async function checkTimes() {
 
         console.log("Current URL:", page.url());
 
-        await sleep(5000);
+        await sleep(3000);
 
-        // 🔍 DEBUG inputs
+        // 🍪 FIX: acceptera cookies
+        console.log("Handling cookies...");
+
+        try {
+            await page.waitForSelector("#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll", { timeout: 10000 });
+
+            await page.click("#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll");
+
+            console.log("Cookies accepted");
+
+            await sleep(3000);
+
+        } catch (e) {
+            console.log("No cookie popup found");
+        }
+
+        // 🔍 HÄMTA riktiga inputs EFTER cookies
         const inputs = await page.evaluate(() => {
             return Array.from(document.querySelectorAll("input"))
                 .map(el => ({
@@ -94,7 +109,7 @@ async function checkTimes() {
                 }));
         });
 
-        console.log("Inputs found:", inputs);
+        console.log("REAL Inputs:", inputs);
 
         // 🔍 hitta rätt frame
         let target = page;
@@ -115,23 +130,19 @@ async function checkTimes() {
 
         await target.waitForSelector("input", { timeout: 60000 });
 
-        const usernameSelector = "input[type='text'], input[name='username']";
-        const passwordSelector = "input[type='password']";
-
-        await target.type(usernameSelector, watchConfig.golfId, { delay: 50 });
-        await target.type(passwordSelector, watchConfig.password, { delay: 50 });
+        // 🔥 enklare selectors (mer robust)
+        await target.type("input[type='text']", watchConfig.golfId, { delay: 50 });
+        await target.type("input[type='password']", watchConfig.password, { delay: 50 });
 
         console.log("Click login...");
 
-        const loginBtn = await target.$("button[type='submit'], button");
+        const loginBtn = await target.$("button");
 
         if (loginBtn) {
             await Promise.all([
                 loginBtn.click(),
                 page.waitForNavigation({ waitUntil: "networkidle2", timeout: 60000 }).catch(() => {})
             ]);
-        } else {
-            console.log("No login button found");
         }
 
         console.log("Logged in maybe...");
