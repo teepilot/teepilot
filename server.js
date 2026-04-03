@@ -17,6 +17,11 @@ let watchConfig = null;
 
 let status = "Ingen aktiv bevakning";
 
+// 🔧 sleep istället för waitForTimeout
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function sendEmail(email, time) {
     try {
         await resend.emails.send({
@@ -76,10 +81,9 @@ async function checkTimes() {
 
         console.log("Current URL:", page.url());
 
-        // vänta lite extra (MinGolf laddar segt)
-        await page.waitForTimeout(5000);
+        await sleep(5000);
 
-        // DEBUG: se inputs
+        // 🔍 DEBUG inputs
         const inputs = await page.evaluate(() => {
             return Array.from(document.querySelectorAll("input"))
                 .map(el => ({
@@ -92,7 +96,7 @@ async function checkTimes() {
 
         console.log("Inputs found:", inputs);
 
-        // 🔍 hitta rätt frame (om finns)
+        // 🔍 hitta rätt frame
         let target = page;
 
         const frames = page.frames();
@@ -111,7 +115,6 @@ async function checkTimes() {
 
         await target.waitForSelector("input", { timeout: 60000 });
 
-        // testa flera selectors (failsafe)
         const usernameSelector = "input[type='text'], input[name='username']";
         const passwordSelector = "input[type='password']";
 
@@ -133,7 +136,7 @@ async function checkTimes() {
 
         console.log("Logged in maybe...");
 
-        await page.waitForTimeout(5000);
+        await sleep(5000);
 
         console.log("Going to booking...");
         await page.goto("https://mingolf.golf.se/", {
@@ -141,11 +144,11 @@ async function checkTimes() {
             timeout: 60000
         });
 
-        await page.waitForTimeout(5000);
+        await sleep(5000);
 
         console.log("Searching club...");
         await page.type("input", "Vasatorp");
-        await page.waitForTimeout(3000);
+        await sleep(3000);
 
         await page.evaluate(() => {
             const club = [...document.querySelectorAll("div")]
@@ -153,7 +156,7 @@ async function checkTimes() {
             if (club) club.click();
         });
 
-        await page.waitForTimeout(3000);
+        await sleep(3000);
 
         console.log("Selecting course...");
         await page.evaluate(() => {
@@ -162,7 +165,7 @@ async function checkTimes() {
             if (course) course.click();
         });
 
-        await page.waitForTimeout(5000);
+        await sleep(5000);
 
         console.log("Getting times...");
         const times = await page.evaluate(() => {
