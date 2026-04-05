@@ -47,20 +47,33 @@ async function checkTimes() {
             ...chromium.args,
             "--no-sandbox",
             "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-blink-features=AutomationControlled"
+            "--disable-dev-shm-usage"
         ],
         executablePath: await chromium.executablePath(),
-        headless: "new"
+        headless: "new",
+        protocolTimeout: 120000 // 🔥 fix timeout
+    });
+
+    const context = browser.defaultBrowserContext();
+
+    await context.setCookie({
+        name: "CookieConsent",
+        value: JSON.stringify({
+            stamp: "manual",
+            necessary: true,
+            preferences: true,
+            statistics: true,
+            marketing: true,
+            method: "explicit",
+            ver: 1,
+            utc: Date.now(),
+            region: "se"
+        }),
+        domain: "mingolf.golf.se",
+        path: "/"
     });
 
     const page = await browser.newPage();
-
-    await page.evaluateOnNewDocument(() => {
-        Object.defineProperty(navigator, 'webdriver', {
-            get: () => false,
-        });
-    });
 
     await page.setExtraHTTPHeaders({
         "user-agent":
@@ -68,28 +81,7 @@ async function checkTimes() {
             "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     });
 
-    page.setDefaultNavigationTimeout(60000);
-
     try {
-
-        const context = browser.defaultBrowserContext();
-
-        await context.setCookie({
-            name: "CookieConsent",
-            value: JSON.stringify({
-                stamp: "manual",
-                necessary: true,
-                preferences: true,
-                statistics: true,
-                marketing: true,
-                method: "explicit",
-                ver: 1,
-                utc: Date.now(),
-                region: "se"
-            }),
-            domain: "mingolf.golf.se",
-            path: "/"
-        });
 
         console.log("Going to booking page...");
         await page.goto("https://mingolf.golf.se/bokning/", {
@@ -99,15 +91,10 @@ async function checkTimes() {
 
         console.log("Current URL:", page.url());
 
-        // 🔥 LOGIN
         console.log("Waiting for login...");
         await page.waitForSelector("input[type='password']", { timeout: 60000 });
 
         const inputs = await page.$$("input:not([type='checkbox'])");
-
-        if (inputs.length < 2) {
-            throw new Error("Login inputs not found");
-        }
 
         console.log("Typing login...");
         await inputs[0].type(watchConfig.golfId, { delay: 50 });
@@ -120,33 +107,42 @@ async function checkTimes() {
 
         await sleep(5000);
 
-        console.log("Logged in maybe...");
+        console.log("Logged in...");
 
-        // 🔍 Sök klubb
         console.log("Searching club...");
-        await page.type("input", "Vasatorp");
+
+        await page.waitForSelector("input", { timeout: 60000 });
+        await page.type("input", "Vasatorp", { delay: 50 });
+
+        await page.waitForSelector("li", { timeout: 60000 });
+
+        const clubs = await page.$$("li");
+
+        if (clubs.length > 0) {
+            await clubs[0].click();
+        }
+
         await sleep(3000);
 
-        await page.evaluate(() => {
-            const club = [...document.querySelectorAll("div")]
-                .find(el => el.innerText.includes("Vasatorp"));
-            if (club) club.click();
-        });
-
-        await sleep(3000);
-
-        // ⛳ Välj bana
         console.log("Selecting course...");
-        await page.evaluate(() => {
-            const course = [...document.querySelectorAll("div")]
-                .find(el => el.innerText.includes("Park"));
-            if (course) course.click();
-        });
+
+        await page.waitForSelector("button", { timeout: 60000 });
+
+        const buttons = await page.$$("button");
+
+        for (const btn of buttons) {
+            const text = await page.evaluate(el => el.innerText, btn);
+
+            if (text.includes("Park")) {
+                await btn.click();
+                break;
+            }
+        }
 
         await sleep(5000);
 
-        // 🕒 Hämta tider
         console.log("Getting times...");
+
         const times = await page.evaluate(() => {
             return Array.from(document.querySelectorAll("button"))
                 .map(el => el.innerText)
@@ -183,7 +179,6 @@ async function checkTimes() {
     await browser.close();
 }
 
-// 🚀 START
 app.post("/start", (req, res) => {
 
     watchConfig = req.body;
@@ -199,7 +194,6 @@ app.post("/start", (req, res) => {
     res.sendStatus(200);
 });
 
-// 🛑 STOP
 app.post("/stop", (req, res) => {
 
     if (job) job.stop();
@@ -212,12 +206,10 @@ app.post("/stop", (req, res) => {
     res.sendStatus(200);
 });
 
-// 📊 STATUS
 app.get("/status", (req, res) => {
     res.json({ status });
 });
 
-// 🌐 ROOT
 app.get("/", (req, res) => {
     res.send("Servern funkar");
 });
