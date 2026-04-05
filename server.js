@@ -72,8 +72,9 @@ async function checkTimes() {
 
     try {
 
-        // 🔥 FIX: sätt cookie manuellt (skippar popup helt)
-        await page.setCookie({
+        const context = browser.defaultBrowserContext();
+
+        await context.setCookie({
             name: "CookieConsent",
             value: JSON.stringify({
                 stamp: "manual",
