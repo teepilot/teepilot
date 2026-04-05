@@ -72,102 +72,56 @@ async function checkTimes() {
 
     try {
 
-        console.log("Going to login page...");
-        await page.goto("https://mingolf.golf.se/", {
-            waitUntil: "domcontentloaded",
+        // 🔥 FIX: sätt cookie manuellt (skippar popup helt)
+        await page.setCookie({
+            name: "CookieConsent",
+            value: JSON.stringify({
+                stamp: "manual",
+                necessary: true,
+                preferences: true,
+                statistics: true,
+                marketing: true,
+                method: "explicit",
+                ver: 1,
+                utc: Date.now(),
+                region: "se"
+            }),
+            domain: "mingolf.golf.se",
+            path: "/"
+        });
+
+        console.log("Going to booking page...");
+        await page.goto("https://mingolf.golf.se/bokning/", {
+            waitUntil: "networkidle2",
             timeout: 60000
         });
 
         console.log("Current URL:", page.url());
 
-        await sleep(3000);
-
-        // 🍪 COOKIE FIX (iframe)
-        console.log("Handling cookies...");
-
-        const cookieFrame = page.frames().find(f =>
-            f.url().includes("consentcdn.cookiebot.com")
-        );
-
-        if (cookieFrame) {
-            try {
-                await cookieFrame.waitForSelector("button", { timeout: 10000 });
-
-                const buttons = await cookieFrame.$$("button");
-
-                for (const btn of buttons) {
-                    const text = await cookieFrame.evaluate(el => el.innerText, btn);
-
-                    if (
-                        text.toLowerCase().includes("allow all") ||
-                        text.toLowerCase().includes("acceptera")
-                    ) {
-                        await btn.click();
-                        console.log("Cookies accepted!");
-                        break;
-                    }
-                }
-
-                await sleep(3000);
-
-            } catch (err) {
-                console.log("Cookie click failed:", err);
-            }
-        } else {
-            console.log("No cookie frame found");
-        }
-
-        // 🔥 NU ska login inputs finnas
-        console.log("Waiting for login inputs...");
+        // 🔥 LOGIN
+        console.log("Waiting for login...");
         await page.waitForSelector("input[type='password']", { timeout: 60000 });
 
-        // DEBUG
-        const inputs = await page.evaluate(() => {
-            return Array.from(document.querySelectorAll("input"))
-                .map(el => ({
-                    id: el.id,
-                    name: el.name,
-                    type: el.type,
-                    placeholder: el.placeholder
-                }));
-        });
+        const inputs = await page.$$("input:not([type='checkbox'])");
 
-        console.log("REAL Inputs:", inputs);
+        if (inputs.length < 2) {
+            throw new Error("Login inputs not found");
+        }
 
         console.log("Typing login...");
+        await inputs[0].type(watchConfig.golfId, { delay: 50 });
+        await inputs[1].type(watchConfig.password, { delay: 50 });
 
-        const allInputs = await page.$$("input:not([type='checkbox'])");
+        console.log("Submitting login...");
+        await inputs[1].press("Enter");
 
-        if (allInputs.length >= 2) {
-            await allInputs[0].type(watchConfig.golfId, { delay: 50 });
-            await allInputs[1].type(watchConfig.password, { delay: 50 });
-        } else {
-            throw new Error("Could not find login inputs");
-        }
+        await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 60000 }).catch(() => {});
 
-        console.log("Click login...");
-
-        const loginBtn = await page.$("button");
-
-        if (loginBtn) {
-            await Promise.all([
-                loginBtn.click(),
-                page.waitForNavigation({ waitUntil: "networkidle2", timeout: 60000 }).catch(() => {})
-            ]);
-        }
+        await sleep(5000);
 
         console.log("Logged in maybe...");
 
-        await sleep(5000);
-
-        console.log("Going to booking...");
-        await page.goto("https://mingolf.golf.se/", {
-            waitUntil: "domcontentloaded",
-            timeout: 60000
-        });
-
-        await sleep(5000);
-
+        // 🔍 Sök klubb
         console.log("Searching club...");
         await page.type("input", "Vasatorp");
         await sleep(3000);
@@ -180,15 +134,17 @@ async function checkTimes() {
 
         await sleep(3000);
 
+        // ⛳ Välj bana
         console.log("Selecting course...");
         await page.evaluate(() => {
             const course = [...document.querySelectorAll("div")]
-                .find(el => el.innerText.includes("Park Course"));
+                .find(el => el.innerText.includes("Park"));
             if (course) course.click();
         });
 
         await sleep(5000);
 
+        // 🕒 Hämta tider
         console.log("Getting times...");
         const times = await page.evaluate(() => {
             return Array.from(document.querySelectorAll("button"))
@@ -210,7 +166,7 @@ async function checkTimes() {
 
             await sendEmail(watchConfig.email, time);
 
-            status = `Bevakning slutförd - tid hittad: ${time}`;
+            status = `Bevakning klar - tid hittad: ${time}`;
 
             job.stop();
             watchConfig = null;
@@ -226,6 +182,7 @@ async function checkTimes() {
     await browser.close();
 }
 
+// 🚀 START
 app.post("/start", (req, res) => {
 
     watchConfig = req.body;
@@ -241,6 +198,7 @@ app.post("/start", (req, res) => {
     res.sendStatus(200);
 });
 
+// 🛑 STOP
 app.post("/stop", (req, res) => {
 
     if (job) job.stop();
@@ -253,10 +211,12 @@ app.post("/stop", (req, res) => {
     res.sendStatus(200);
 });
 
+// 📊 STATUS
 app.get("/status", (req, res) => {
     res.json({ status });
 });
 
+// 🌐 ROOT
 app.get("/", (req, res) => {
     res.send("Servern funkar");
 });
