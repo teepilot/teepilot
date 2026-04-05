@@ -14,7 +14,7 @@ app.use(express.json());
 
 let job = null;
 let watchConfig = null;
-let isRunning = false; // 🔥 FIX
+let isRunning = false;
 
 let status = "Ingen aktiv bevakning";
 
@@ -32,7 +32,6 @@ async function sendEmail(email, time) {
         });
 
         console.log("Mail sent to", email);
-
     } catch (err) {
         console.log("Email error:", err);
     }
@@ -46,7 +45,6 @@ async function checkTimes() {
     }
 
     isRunning = true;
-
     console.log("checkTimes körs");
 
     if (!watchConfig) {
@@ -63,7 +61,11 @@ async function checkTimes() {
                 ...chromium.args,
                 "--no-sandbox",
                 "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage"
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--no-zygote",
+                "--single-process", // 🔥 memory fix
+                "--disable-extensions"
             ],
             executablePath: await chromium.executablePath(),
             headless: "new",
@@ -72,7 +74,6 @@ async function checkTimes() {
 
         const context = browser.defaultBrowserContext();
 
-        // 🍪 Cookie fix
         await context.setCookie({
             name: "CookieConsent",
             value: JSON.stringify({
@@ -92,6 +93,24 @@ async function checkTimes() {
 
         const page = await browser.newPage();
 
+        // 🔥 BLOCKA ONÖDIGT
+        await page.setRequestInterception(true);
+
+        page.on("request", (req) => {
+            const type = req.resourceType();
+
+            if (
+                type === "image" ||
+                type === "stylesheet" ||
+                type === "font" ||
+                type === "media"
+            ) {
+                req.abort();
+            } else {
+                req.continue();
+            }
+        });
+
         await page.setExtraHTTPHeaders({
             "user-agent":
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
@@ -100,7 +119,7 @@ async function checkTimes() {
 
         console.log("Going to booking page...");
         await page.goto("https://mingolf.golf.se/bokning/", {
-            waitUntil: "networkidle2",
+            waitUntil: "domcontentloaded",
             timeout: 60000
         });
 
@@ -113,23 +132,22 @@ async function checkTimes() {
         const inputs = await page.$$("input:not([type='checkbox'])");
 
         console.log("Typing login...");
-        await inputs[0].type(watchConfig.golfId, { delay: 50 });
-        await inputs[1].type(watchConfig.password, { delay: 50 });
+        await inputs[0].type(watchConfig.golfId, { delay: 30 });
+        await inputs[1].type(watchConfig.password, { delay: 30 });
 
         console.log("Submitting login...");
         await inputs[1].press("Enter");
 
-        await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 60000 }).catch(() => {});
+        await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
 
         console.log("Logged in...");
+        await sleep(2000);
 
-        await sleep(5000);
-
-        // 🔍 SÖK KLUBB
+        // 🔍 KLUBB
         console.log("Searching club...");
 
         await page.waitForSelector("input", { timeout: 60000 });
-        await page.type("input", "Vasatorp", { delay: 50 });
+        await page.type("input", "Vasatorp", { delay: 30 });
 
         await page.waitForSelector("li", { timeout: 60000 });
 
@@ -138,9 +156,9 @@ async function checkTimes() {
             await clubs[0].click();
         }
 
-        await sleep(3000);
+        await sleep(2000);
 
-        // ⛳ VÄLJ BANA
+        // ⛳ BANA
         console.log("Selecting course...");
 
         await page.waitForSelector("button", { timeout: 60000 });
@@ -156,9 +174,9 @@ async function checkTimes() {
             }
         }
 
-        await sleep(5000);
+        await sleep(3000);
 
-        // 🕒 HÄMTA TIDER
+        // 🕒 TIDER
         console.log("Getting times...");
 
         const times = await page.evaluate(() => {
@@ -191,9 +209,13 @@ async function checkTimes() {
         console.log("Error:", err);
     }
 
-    if (browser) await browser.close();
+    if (browser) {
+        try {
+            await browser.close();
+        } catch {}
+    }
 
-    isRunning = false; // 🔥 VIKTIG
+    isRunning = false;
 }
 
 // 🚀 START
