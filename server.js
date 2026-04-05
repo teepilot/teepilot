@@ -64,7 +64,7 @@ async function checkTimes() {
                 "--disable-dev-shm-usage",
                 "--disable-gpu",
                 "--no-zygote",
-                "--single-process", // 🔥 memory fix
+                "--single-process",
                 "--disable-extensions"
             ],
             executablePath: await chromium.executablePath(),
@@ -93,18 +93,11 @@ async function checkTimes() {
 
         const page = await browser.newPage();
 
-        // 🔥 BLOCKA ONÖDIGT
+        // 🔥 blocka onödigt
         await page.setRequestInterception(true);
-
         page.on("request", (req) => {
             const type = req.resourceType();
-
-            if (
-                type === "image" ||
-                type === "stylesheet" ||
-                type === "font" ||
-                type === "media"
-            ) {
+            if (["image", "stylesheet", "font", "media"].includes(type)) {
                 req.abort();
             } else {
                 req.continue();
@@ -139,35 +132,29 @@ async function checkTimes() {
         await inputs[1].press("Enter");
 
         await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
-
         console.log("Logged in...");
         await sleep(2000);
 
         // 🔍 KLUBB
         console.log("Searching club...");
-
         await page.waitForSelector("input", { timeout: 60000 });
         await page.type("input", "Vasatorp", { delay: 30 });
 
         await page.waitForSelector("li", { timeout: 60000 });
 
         const clubs = await page.$$("li");
-        if (clubs.length > 0) {
-            await clubs[0].click();
-        }
+        if (clubs.length > 0) await clubs[0].click();
 
         await sleep(2000);
 
         // ⛳ BANA
         console.log("Selecting course...");
-
         await page.waitForSelector("button", { timeout: 60000 });
 
         const buttons = await page.$$("button");
 
         for (const btn of buttons) {
             const text = await page.evaluate(el => el.innerText, btn);
-
             if (text.includes("Park")) {
                 await btn.click();
                 break;
@@ -176,13 +163,29 @@ async function checkTimes() {
 
         await sleep(3000);
 
-        // 🕒 TIDER
+        // 📅 DATUM (🔥 NY FIX)
+        console.log("Selecting date...");
+
+        const allButtons = await page.$$("button");
+
+        for (const btn of allButtons) {
+            const text = await page.evaluate(el => el.innerText, btn);
+
+            if (text.includes(watchConfig.date.split("-")[2])) {
+                await btn.click();
+                break;
+            }
+        }
+
+        await sleep(3000);
+
+        // 🕒 TIDER (🔥 NY FIX)
         console.log("Getting times...");
 
         const times = await page.evaluate(() => {
-            return Array.from(document.querySelectorAll("button"))
+            return Array.from(document.querySelectorAll("*"))
                 .map(el => el.innerText)
-                .filter(text => text.match(/\d{2}:\d{2}/));
+                .filter(text => /^\d{2}:\d{2}$/.test(text));
         });
 
         console.log("Times found:", times);
@@ -201,7 +204,7 @@ async function checkTimes() {
 
             status = `Bevakning klar - tid hittad: ${time}`;
 
-            job.stop();
+            if (job) job.stop();
             watchConfig = null;
         }
 
@@ -229,7 +232,9 @@ app.post("/start", (req, res) => {
     if (job) job.stop();
 
     checkTimes();
-    job = cron.schedule("*/15 * * * *", checkTimes);
+
+    // 🔥 kör var 5 min (inte för ofta)
+    job = cron.schedule("*/5 * * * *", checkTimes);
 
     res.sendStatus(200);
 });
