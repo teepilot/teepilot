@@ -14,6 +14,7 @@ app.use(express.json());
 
 let job = null;
 let watchConfig = null;
+let isRunning = false; // 🔥 FIX
 
 let status = "Ingen aktiv bevakning";
 
@@ -71,6 +72,7 @@ async function checkTimes() {
 
         const context = browser.defaultBrowserContext();
 
+        // 🍪 Cookie fix
         await context.setCookie({
             name: "CookieConsent",
             value: JSON.stringify({
@@ -104,7 +106,7 @@ async function checkTimes() {
 
         console.log("Current URL:", page.url());
 
-        // LOGIN
+        // 🔐 LOGIN
         console.log("Waiting for login...");
         await page.waitForSelector("input[type='password']", { timeout: 60000 });
 
@@ -123,7 +125,7 @@ async function checkTimes() {
 
         await sleep(5000);
 
-        // SEARCH CLUB
+        // 🔍 SÖK KLUBB
         console.log("Searching club...");
 
         await page.waitForSelector("input", { timeout: 60000 });
@@ -138,7 +140,7 @@ async function checkTimes() {
 
         await sleep(3000);
 
-        // COURSE
+        // ⛳ VÄLJ BANA
         console.log("Selecting course...");
 
         await page.waitForSelector("button", { timeout: 60000 });
@@ -147,6 +149,7 @@ async function checkTimes() {
 
         for (const btn of buttons) {
             const text = await page.evaluate(el => el.innerText, btn);
+
             if (text.includes("Park")) {
                 await btn.click();
                 break;
@@ -155,7 +158,7 @@ async function checkTimes() {
 
         await sleep(5000);
 
-        // TIMES
+        // 🕒 HÄMTA TIDER
         console.log("Getting times...");
 
         const times = await page.evaluate(() => {
@@ -190,9 +193,10 @@ async function checkTimes() {
 
     if (browser) await browser.close();
 
-    isRunning = false; // 🔥 viktig
+    isRunning = false; // 🔥 VIKTIG
 }
 
+// 🚀 START
 app.post("/start", (req, res) => {
 
     watchConfig = req.body;
@@ -208,6 +212,7 @@ app.post("/start", (req, res) => {
     res.sendStatus(200);
 });
 
+// 🛑 STOP
 app.post("/stop", (req, res) => {
 
     if (job) job.stop();
@@ -220,10 +225,12 @@ app.post("/stop", (req, res) => {
     res.sendStatus(200);
 });
 
+// 📊 STATUS
 app.get("/status", (req, res) => {
     res.json({ status });
 });
 
+// 🌐 ROOT
 app.get("/", (req, res) => {
     res.send("Servern funkar");
 });
