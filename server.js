@@ -39,49 +39,62 @@ async function sendEmail(email, time) {
 
 async function checkTimes() {
 
+    if (isRunning) {
+        console.log("Skipping - already running");
+        return;
+    }
+
+    isRunning = true;
+
     console.log("checkTimes körs");
-    if (!watchConfig) return;
 
-    const browser = await puppeteer.launch({
-        args: [
-            ...chromium.args,
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage"
-        ],
-        executablePath: await chromium.executablePath(),
-        headless: "new",
-        protocolTimeout: 120000 // 🔥 fix timeout
-    });
+    if (!watchConfig) {
+        isRunning = false;
+        return;
+    }
 
-    const context = browser.defaultBrowserContext();
-
-    await context.setCookie({
-        name: "CookieConsent",
-        value: JSON.stringify({
-            stamp: "manual",
-            necessary: true,
-            preferences: true,
-            statistics: true,
-            marketing: true,
-            method: "explicit",
-            ver: 1,
-            utc: Date.now(),
-            region: "se"
-        }),
-        domain: "mingolf.golf.se",
-        path: "/"
-    });
-
-    const page = await browser.newPage();
-
-    await page.setExtraHTTPHeaders({
-        "user-agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    });
+    let browser;
 
     try {
+
+        browser = await puppeteer.launch({
+            args: [
+                ...chromium.args,
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage"
+            ],
+            executablePath: await chromium.executablePath(),
+            headless: "new",
+            protocolTimeout: 120000
+        });
+
+        const context = browser.defaultBrowserContext();
+
+        await context.setCookie({
+            name: "CookieConsent",
+            value: JSON.stringify({
+                stamp: "manual",
+                necessary: true,
+                preferences: true,
+                statistics: true,
+                marketing: true,
+                method: "explicit",
+                ver: 1,
+                utc: Date.now(),
+                region: "se"
+            }),
+            domain: "mingolf.golf.se",
+            path: "/"
+        });
+
+        const page = await browser.newPage();
+
+        await page.setExtraHTTPHeaders({
+            "user-agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        });
 
         console.log("Going to booking page...");
         await page.goto("https://mingolf.golf.se/bokning/", {
@@ -91,6 +104,7 @@ async function checkTimes() {
 
         console.log("Current URL:", page.url());
 
+        // LOGIN
         console.log("Waiting for login...");
         await page.waitForSelector("input[type='password']", { timeout: 60000 });
 
@@ -105,10 +119,11 @@ async function checkTimes() {
 
         await page.waitForNavigation({ waitUntil: "networkidle2", timeout: 60000 }).catch(() => {});
 
-        await sleep(5000);
-
         console.log("Logged in...");
 
+        await sleep(5000);
+
+        // SEARCH CLUB
         console.log("Searching club...");
 
         await page.waitForSelector("input", { timeout: 60000 });
@@ -117,13 +132,13 @@ async function checkTimes() {
         await page.waitForSelector("li", { timeout: 60000 });
 
         const clubs = await page.$$("li");
-
         if (clubs.length > 0) {
             await clubs[0].click();
         }
 
         await sleep(3000);
 
+        // COURSE
         console.log("Selecting course...");
 
         await page.waitForSelector("button", { timeout: 60000 });
@@ -132,7 +147,6 @@ async function checkTimes() {
 
         for (const btn of buttons) {
             const text = await page.evaluate(el => el.innerText, btn);
-
             if (text.includes("Park")) {
                 await btn.click();
                 break;
@@ -141,6 +155,7 @@ async function checkTimes() {
 
         await sleep(5000);
 
+        // TIMES
         console.log("Getting times...");
 
         const times = await page.evaluate(() => {
@@ -167,16 +182,15 @@ async function checkTimes() {
 
             job.stop();
             watchConfig = null;
-
-        } else {
-            console.log("No times in range");
         }
 
     } catch (err) {
         console.log("Error:", err);
     }
 
-    await browser.close();
+    if (browser) await browser.close();
+
+    isRunning = false; // 🔥 viktig
 }
 
 app.post("/start", (req, res) => {
