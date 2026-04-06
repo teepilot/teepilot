@@ -115,7 +115,7 @@ async function checkTimes() {
 
         await sleep(6000);
 
-        // 🍪 COOKIE FIX
+        // COOKIE
         console.log("Handling cookie popup...");
 
         try {
@@ -133,46 +133,25 @@ async function checkTimes() {
             }
         } catch {}
 
-        // 🎯 HITTA DROPDOWN VIA STRUKTUR (inte text)
-        console.log("Finding course dropdown (robust)...");
+        // 🔥 XPATH DROPDOWN (STABILASTE)
+        console.log("Opening course dropdown (XPath)...");
 
-        const dropdown = await page.evaluateHandle(() => {
-
-            // hitta element som ser ut som dropdown (Vue select)
-            const candidates = Array.from(document.querySelectorAll("div, button"));
-
-            for (const el of candidates) {
-                const classes = el.className || "";
-
-                // 🔥 matcha delar av class (inte hela)
-                if (
-                    classes.includes("selection") &&
-                    classes.includes("course")
-                ) {
-                    return el;
-                }
-
-                // fallback: aria role
-                if (el.getAttribute("role") === "combobox") {
-                    return el;
-                }
-            }
-
-            return null;
-        });
+        const [dropdown] = await page.$x(
+            "//div[contains(@class,'selection') and contains(@class,'course')]"
+        );
 
         if (!dropdown) {
-            throw new Error("Kunde inte hitta dropdown (structure fail)");
+            throw new Error("Dropdown hittades inte via XPath");
         }
 
-        await dropdown.asElement().click();
+        await dropdown.click();
 
         await sleep(2000);
 
-        // 🎯 SELECT COURSE
+        // SELECT COURSE
         console.log("Selecting Tournament Course...");
 
-        await page.waitForSelector("[role='option'], li", { timeout: 15000 });
+        await page.waitForSelector("li, [role='option']", { timeout: 15000 });
 
         const options = await page.$$("[role='option'], li");
 
