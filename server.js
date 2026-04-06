@@ -35,7 +35,7 @@ async function sendEmail(email, time) {
     }
 }
 
-// 🔐 LOGIN → HÄMTA COOKIE
+// 🔐 LOGIN → HÄMTA COOKIE (FIXAD)
 async function loginAndGetCookie() {
 
     console.log("Logging in to get cookie...");
@@ -60,14 +60,21 @@ async function loginAndGetCookie() {
     await inputs[1].type(watchConfig.password);
     await inputs[1].press("Enter");
 
-    await page.waitForNavigation({ waitUntil: "networkidle2" });
+    // 🔥 VÄNTA PÅ COOKIE ISTÄLLET FÖR NAVIGATION
+    let mgat = null;
 
-    const cookies = await page.cookies();
-    const mgat = cookies.find(c => c.name === "mgat");
+    for (let i = 0; i < 20; i++) {
+        const cookies = await page.cookies();
+        mgat = cookies.find(c => c.name === "mgat");
+
+        if (mgat) break;
+
+        await sleep(1000);
+    }
 
     await browser.close();
 
-    if (!mgat) throw new Error("No mgat cookie");
+    if (!mgat) throw new Error("No mgat cookie after login");
 
     mgatCookie = `mgat=${mgat.value}`;
     console.log("Got cookie ✅");
@@ -97,7 +104,6 @@ async function fetchTimes() {
 
     let times = [];
 
-    // ⚠️ detta kan ändras → vi justerar efter din logg
     if (data?.times) {
         times = data.times.map(t => t.time);
     }
@@ -175,7 +181,7 @@ app.post("/stop", (req, res) => {
 });
 
 app.get("/", (req, res) => {
-    res.send("API version running 🚀");
+    res.send("API server e igång");
 });
 
 const PORT = process.env.PORT || 3000;
