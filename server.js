@@ -73,7 +73,6 @@ async function checkTimes() {
 
         const page = await browser.newPage();
 
-        // 🔥 SPEED + MEMORY
         await page.setCacheEnabled(false);
         await page.setDefaultTimeout(30000);
         await page.setDefaultNavigationTimeout(30000);
@@ -88,13 +87,12 @@ async function checkTimes() {
             }
         });
 
-        // 🔐 LOGIN
+        // LOGIN
         console.log("Going to login...");
         await page.goto("https://mingolf.golf.se/login/", {
             waitUntil: "domcontentloaded"
         });
 
-        console.log("Waiting for login...");
         await page.waitForSelector("input[type='password']", { visible: true });
 
         const loginInputs = await page.$$("input:not([type='checkbox'])");
@@ -109,90 +107,87 @@ async function checkTimes() {
         await page.waitForNavigation({ waitUntil: "networkidle2" }).catch(() => {});
         console.log("Logged in...");
 
-        // 👉 gå till bokning
+        // BOOKING PAGE
         console.log("Going to booking page...");
         await page.goto("https://mingolf.golf.se/bokning/#/", {
             waitUntil: "domcontentloaded"
         });
 
-        await sleep(4000);
+        await sleep(5000);
 
-        // 🔍 SEARCH CLUB (FIXAD)
+        // SEARCH CLUB
         console.log("Searching club...");
 
-        const searchInputs = await page.$$("input");
+        const searchInput = await page.waitForSelector("input[placeholder*='klubb']", { visible: true });
 
-        let searchInput = null;
+        await searchInput.click({ clickCount: 3 });
+        await searchInput.type("Vasatorp", { delay: 50 });
 
-        for (const input of searchInputs) {
-            const placeholder = await page.evaluate(el => el.placeholder, input);
+        await sleep(2000);
 
-            if (placeholder && placeholder.toLowerCase().includes("klubb")) {
-                searchInput = input;
-                break;
-            }
-        }
+        await page.waitForSelector("[role='option']", { timeout: 10000 });
 
-        if (!searchInput) {
-            searchInput = searchInputs[0];
-        }
+        const clubs = await page.$$("[role='option']");
 
-        await searchInput.focus();
-
-        await page.keyboard.down('Control');
-        await page.keyboard.press('A');
-        await page.keyboard.up('Control');
-        await page.keyboard.press('Backspace');
-
-        await page.keyboard.type("Vasatorp", { delay: 30 });
-
-        await page.waitForSelector("li", { timeout: 10000 });
-
-        const clubs = await page.$$("li");
+        let foundClub = false;
 
         for (const club of clubs) {
             const text = await page.evaluate(el => el.innerText, club);
 
             if (text.toLowerCase().includes("vasatorp")) {
                 await club.click();
+                foundClub = true;
                 break;
             }
         }
 
-        await sleep(3000);
-
-        // 🔥 RÄTT DROPDOWN
-        console.log("Opening club/course selector...");
-
-        const selectors = await page.$$("button, div");
-
-        for (const el of selectors) {
-            const text = await page.evaluate(e => e.innerText, el);
-
-            if (text.includes("Vasatorps Golfklubb")) {
-                await el.click();
-                break;
-            }
-        }
-
-        await sleep(3000);
-
-        console.log("Selecting course...");
-
-        const options = await page.$$("button, li, div");
-
-        for (const opt of options) {
-            const text = await page.evaluate(e => e.innerText, opt);
-
-            if (text.includes("Park")) {
-                await opt.click();
-                break;
-            }
+        if (!foundClub) {
+            throw new Error("Kunde inte hitta klubben");
         }
 
         await sleep(4000);
 
-        // 📅 DATUM
+        // OPEN COURSE DROPDOWN
+        console.log("Opening course dropdown...");
+
+        await page.waitForSelector(".course-selection-molecule", { visible: true });
+
+        const courseDropdown = await page.$(".course-selection-molecule");
+
+        if (!courseDropdown) {
+            throw new Error("Course dropdown hittades inte");
+        }
+
+        await courseDropdown.evaluate(el => el.click());
+
+        await sleep(2000);
+
+        // SELECT COURSE
+        console.log("Selecting course...");
+
+        await page.waitForSelector("[role='option']", { timeout: 10000 });
+
+        const options = await page.$$("[role='option']");
+
+        let foundCourse = false;
+
+        for (const opt of options) {
+            const text = await page.evaluate(el => el.innerText, opt);
+
+            if (text.toLowerCase().includes("park")) {
+                await opt.click();
+                foundCourse = true;
+                break;
+            }
+        }
+
+        if (!foundCourse) {
+            throw new Error("Kunde inte hitta bana (Park)");
+        }
+
+        await sleep(4000);
+
+        // DATE
         console.log("Selecting date...");
         const day = watchConfig.date.split("-")[2];
 
@@ -209,7 +204,7 @@ async function checkTimes() {
 
         await sleep(4000);
 
-        // 🕒 TIMES
+        // TIMES
         console.log("Getting times...");
 
         const times = await page.evaluate(() => {
@@ -240,18 +235,18 @@ async function checkTimes() {
 
     } catch (err) {
         console.log("Error:", err);
-    }
+    } finally {
+        if (browser) {
+            try {
+                await browser.close();
+            } catch {}
+        }
 
-    if (browser) {
-        try {
-            await browser.close();
-        } catch {}
+        isRunning = false;
     }
-
-    isRunning = false;
 }
 
-// 🚀 START
+// START
 app.post("/start", (req, res) => {
 
     watchConfig = req.body;
@@ -268,7 +263,7 @@ app.post("/start", (req, res) => {
     res.sendStatus(200);
 });
 
-// 🛑 STOP
+// STOP
 app.post("/stop", (req, res) => {
 
     if (job) job.stop();
@@ -281,7 +276,7 @@ app.post("/stop", (req, res) => {
     res.sendStatus(200);
 });
 
-// 📊 STATUS
+// STATUS
 app.get("/status", (req, res) => {
     res.json({ status });
 });
