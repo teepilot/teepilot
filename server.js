@@ -13,14 +13,12 @@ app.use(express.json());
 
 let job = null;
 let watchConfig = null;
-let mgatCookie = null;
 let isRunning = false;
 
 function sleep(ms) {
     return new Promise(r => setTimeout(r, ms));
 }
 
-// 📧 MAIL
 async function sendEmail(email, time) {
     try {
         await resend.emails.send({
@@ -36,88 +34,9 @@ async function sendEmail(email, time) {
     }
 }
 
-// 🔐 LOGIN → HÄMTA COOKIE
-async function loginAndGetCookie() {
-
-    if (!watchConfig) throw new Error("No config in login");
-
-    console.log("Logging in to get cookie...");
-
-    const browser = await puppeteer.launch({
-        args: chromium.args,
-        executablePath: await chromium.executablePath(),
-        headless: true
-    });
-
-    const page = await browser.newPage();
-
-    await page.goto("https://mingolf.golf.se/login/", {
-        waitUntil: "domcontentloaded"
-    });
-
-    await page.waitForSelector("input[type='password']");
-
-    const inputs = await page.$$("input:not([type='checkbox'])");
-
-    await inputs[0].type(watchConfig.golfId);
-    await inputs[1].type(watchConfig.password);
-    await inputs[1].press("Enter");
-
-    // 🔥 Vänta på cookie istället för navigation
-    let mgat = null;
-
-    for (let i = 0; i < 20; i++) {
-        const cookies = await page.cookies();
-        mgat = cookies.find(c => c.name === "mgat");
-
-        if (mgat) break;
-
-        await sleep(1000);
-    }
-
-    await browser.close();
-
-    if (!mgat) throw new Error("No mgat cookie after login");
-
-    mgatCookie = `mgat=${mgat.value}`;
-    console.log("Got cookie ✅");
-}
-
-// 📡 FETCH TIMES VIA API
-async function fetchTimes() {
-
-    console.log("Fetching times via API...");
-
-    const res = await fetch("https://mingolf.golf.se/sysadmin/api/visit/bokning", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "Cookie": mgatCookie
-        },
-        body: JSON.stringify({
-            date: watchConfig.date,
-            course: "Park",
-            club: "Vasatorp"
-        })
-    });
-
-    const data = await res.json();
-
-    console.log("API response:", JSON.stringify(data).slice(0, 500));
-
-    let times = [];
-
-    if (data?.times) {
-        times = data.times.map(t => t.time);
-    }
-
-    return times;
-}
-
-// 🔁 CHECK LOOP
+// 🔁 MAIN CHECK
 async function checkTimes() {
 
-    // ✅ FIX: stoppa om ingen config
     if (!watchConfig) {
         console.log("No config, skipping...");
         return;
@@ -130,13 +49,88 @@ async function checkTimes() {
 
     isRunning = true;
 
+    let browser;
+
     try {
 
-        if (!mgatCookie) {
-            await loginAndGetCookie();
+        console.log("Launching browser...");
+
+        browser = await puppeteer.launch({
+            args: chromium.args,
+            executablePath: await chromium.executablePath(),
+            headless: true
+        });
+
+        const page = await browser.newPage();
+
+        // 🔐 LOGIN
+        console.log("Going to login...");
+
+        await page.goto("https://mingolf.golf.se/login/", {
+            waitUntil: "domcontentloaded"
+        });
+
+        await page.waitForSelector("input[type='password']", { timeout: 10000 });
+
+        const inputs = await page.$$("input:not([type='checkbox'])");
+
+        console.log("Typing login...");
+        await inputs[0].type(watchConfig.golfId);
+        await inputs[1].type(watchConfig.password);
+
+        console.log("Submitting login...");
+        await inputs[1].press("Enter");
+
+        await sleep(3000);
+
+        console.log("Logged in...");
+
+        // 🚀 GÅ DIREKT TILL BOKNING
+        await page.goto("https://mingolf.golf.se/bokning/#/", {
+            waitUntil: "domcontentloaded"
+        });
+
+        await sleep(4000);
+
+        console.log("Searching club...");
+
+        // 🔥 KLICKA "Vasatorp"
+        const buttons = await page.$$("button");
+
+        for (let btn of buttons) {
+            const text = await page.evaluate(el => el.innerText, btn);
+
+            if (text && text.toLowerCase().includes("vasatorp")) {
+                await btn.click();
+                break;
+            }
         }
 
-        const times = await fetchTimes();
+        await sleep(2000);
+
+        console.log("Selecting course...");
+
+        // 🔥 VÄLJ "Park Course"
+        const options = await page.$$("li");
+
+        for (let opt of options) {
+            const text = await page.evaluate(el => el.innerText, opt);
+
+            if (text && text.toLowerCase().includes("park")) {
+                await opt.click();
+                break;
+            }
+        }
+
+        await sleep(3000);
+
+        console.log("Getting times...");
+
+        const times = await page.evaluate(() => {
+            return Array.from(document.querySelectorAll("button"))
+                .map(b => b.innerText)
+                .filter(t => /^\d{2}:\d{2}$/.test(t));
+        });
 
         console.log("Times:", times);
 
@@ -158,10 +152,9 @@ async function checkTimes() {
 
     } catch (err) {
         console.log("Error:", err);
-
-        // 🔄 cookie expired → logga in igen nästa gång
-        mgatCookie = null;
     }
+
+    if (browser) await browser.close();
 
     isRunning = false;
 }
@@ -188,13 +181,12 @@ app.post("/stop", (req, res) => {
     if (job) job.stop();
 
     watchConfig = null;
-    mgatCookie = null;
 
     res.sendStatus(200);
 });
 
 app.get("/", (req, res) => {
-    res.send("API version running 🚀");
+    res.send("Running 🚀");
 });
 
 const PORT = process.env.PORT || 3000;
