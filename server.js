@@ -73,8 +73,10 @@ async function checkTimes() {
 
         const page = await browser.newPage();
 
-        // 🔥 minska memory
+        // 🔥 SPEED + MEMORY
         await page.setCacheEnabled(false);
+        await page.setDefaultTimeout(30000);
+        await page.setDefaultNavigationTimeout(30000);
 
         await page.setRequestInterception(true);
         page.on("request", (req) => {
@@ -89,12 +91,11 @@ async function checkTimes() {
         // 🔐 LOGIN
         console.log("Going to login...");
         await page.goto("https://mingolf.golf.se/login/", {
-            waitUntil: "domcontentloaded",
-            timeout: 60000
+            waitUntil: "domcontentloaded"
         });
 
         console.log("Waiting for login...");
-        await page.waitForSelector("input[type='password']", { timeout: 60000 });
+        await page.waitForSelector("input[type='password']", { visible: true });
 
         const inputs = await page.$$("input:not([type='checkbox'])");
 
@@ -105,56 +106,52 @@ async function checkTimes() {
         console.log("Submitting login...");
         await inputs[1].press("Enter");
 
-        await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
+        await page.waitForNavigation({ waitUntil: "networkidle2" }).catch(() => {});
         console.log("Logged in...");
-        await sleep(2000);
 
-        // 🔥 GÅ TILL RÄTT SIDA
+        // 🔥 GÅ TILL BOKNING (RÄTT ROUTE)
         console.log("Going to booking page...");
         await page.goto("https://mingolf.golf.se/bokning/#/", {
-            waitUntil: "domcontentloaded",
-            timeout: 60000
+            waitUntil: "domcontentloaded"
         });
 
-        console.log("Current URL:", page.url());
         await sleep(4000);
 
-        // 🔍 KLUBB
+        // 🔍 SÖK KLUBB
         console.log("Searching club...");
-        await page.waitForSelector("input", { timeout: 60000 });
+        await page.waitForSelector("input", { visible: true });
 
         await page.type("input", "Vasatorp", { delay: 30 });
 
-        await page.waitForSelector("li", { timeout: 60000 });
+        await page.waitForSelector("li");
 
         const clubs = await page.$$("li");
         if (clubs.length > 0) await clubs[0].click();
 
         await sleep(3000);
 
-        // 🔥 ÖPPNA DROPDOWN
-        console.log("Opening course dropdown...");
+        // 🔥 RÄTT DROPDOWN (VIKTIGASTE FIXEN)
+        console.log("Opening club/course selector...");
 
-        const dropdowns = await page.$$("button");
+        const selectors = await page.$$("button, div");
 
-        for (const btn of dropdowns) {
-            const text = await page.evaluate(el => el.innerText, btn);
+        for (const el of selectors) {
+            const text = await page.evaluate(e => e.innerText, el);
 
-            if (text.toLowerCase().includes("bana")) {
-                await btn.click();
+            if (text.includes("Vasatorps Golfklubb")) {
+                await el.click();
                 break;
             }
         }
 
-        await sleep(2000);
+        await sleep(3000);
 
-        // 🔥 VÄLJ BANA
         console.log("Selecting course...");
 
-        const options = await page.$$("li, button");
+        const options = await page.$$("button, li, div");
 
         for (const opt of options) {
-            const text = await page.evaluate(el => el.innerText, opt);
+            const text = await page.evaluate(e => e.innerText, opt);
 
             if (text.includes("Park")) {
                 await opt.click();
@@ -162,7 +159,7 @@ async function checkTimes() {
             }
         }
 
-        await sleep(3000);
+        await sleep(4000);
 
         // 📅 DATUM
         console.log("Selecting date...");
@@ -181,7 +178,7 @@ async function checkTimes() {
 
         await sleep(4000);
 
-        // 🕒 TIDER (memory-safe)
+        // 🕒 HÄMTA TIDER
         console.log("Getting times...");
 
         const times = await page.evaluate(() => {
