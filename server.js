@@ -115,50 +115,73 @@ async function checkTimes() {
 
         await sleep(6000);
 
-        // FIND DROPDOWN
-        console.log("Finding course dropdown...");
+        // 🍪 COOKIE FIX
+        console.log("Handling cookie popup...");
 
-        const elements = await page.$$("button, div");
+        try {
+            const buttons = await page.$$("button");
 
-        let dropdown = null;
+            for (const btn of buttons) {
+                const text = await page.evaluate(el => el.innerText, btn);
 
-        for (const el of elements) {
-            const text = await page.evaluate(e => e.innerText, el);
-
-            if (
-                text &&
-                (
-                    text.toLowerCase().includes("bana") ||
-                    text.toLowerCase().includes("course") ||
-                    text.toLowerCase().includes("tournament") ||
-                    text.toLowerCase().includes("park")
-                )
-            ) {
-                console.log("Dropdown candidate:", text);
-                dropdown = el;
-                break;
+                if (text && text.toLowerCase().includes("acceptera")) {
+                    console.log("Accepting cookies...");
+                    await btn.click();
+                    await sleep(2000);
+                    break;
+                }
             }
-        }
+        } catch {}
+
+        // 🎯 HITTA DROPDOWN VIA STRUKTUR (inte text)
+        console.log("Finding course dropdown (robust)...");
+
+        const dropdown = await page.evaluateHandle(() => {
+
+            // hitta element som ser ut som dropdown (Vue select)
+            const candidates = Array.from(document.querySelectorAll("div, button"));
+
+            for (const el of candidates) {
+                const classes = el.className || "";
+
+                // 🔥 matcha delar av class (inte hela)
+                if (
+                    classes.includes("selection") &&
+                    classes.includes("course")
+                ) {
+                    return el;
+                }
+
+                // fallback: aria role
+                if (el.getAttribute("role") === "combobox") {
+                    return el;
+                }
+            }
+
+            return null;
+        });
 
         if (!dropdown) {
-            throw new Error("Hittade ingen dropdown för bana");
+            throw new Error("Kunde inte hitta dropdown (structure fail)");
         }
 
-        await dropdown.evaluate(el => el.click());
+        await dropdown.asElement().click();
 
         await sleep(2000);
 
-        // SELECT COURSE (TOURNAMENT)
-        console.log("Selecting course...");
+        // 🎯 SELECT COURSE
+        console.log("Selecting Tournament Course...");
 
-        await page.waitForSelector("[role='option']", { timeout: 10000 });
+        await page.waitForSelector("[role='option'], li", { timeout: 15000 });
 
-        const options = await page.$$("[role='option']");
+        const options = await page.$$("[role='option'], li");
 
         let foundCourse = false;
 
         for (const opt of options) {
             const text = await page.evaluate(el => el.innerText, opt);
+
+            if (!text) continue;
 
             console.log("Option:", text);
 
@@ -170,7 +193,7 @@ async function checkTimes() {
         }
 
         if (!foundCourse) {
-            throw new Error("Kunde inte hitta Tournament Course");
+            throw new Error("Tournament Course hittades inte");
         }
 
         await sleep(4000);
