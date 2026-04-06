@@ -64,36 +64,16 @@ async function checkTimes() {
                 "--disable-dev-shm-usage",
                 "--disable-gpu",
                 "--no-zygote",
-                "--single-process",
-                "--disable-extensions"
+                "--single-process"
             ],
             executablePath: await chromium.executablePath(),
             headless: "new",
             protocolTimeout: 120000
         });
 
-        const context = browser.defaultBrowserContext();
-
-        await context.setCookie({
-            name: "CookieConsent",
-            value: JSON.stringify({
-                stamp: "manual",
-                necessary: true,
-                preferences: true,
-                statistics: true,
-                marketing: true,
-                method: "explicit",
-                ver: 1,
-                utc: Date.now(),
-                region: "se"
-            }),
-            domain: "mingolf.golf.se",
-            path: "/"
-        });
-
         const page = await browser.newPage();
 
-        // 🔥 blocka onödigt
+        // 🔥 blocka tunga grejer
         await page.setRequestInterception(true);
         page.on("request", (req) => {
             const type = req.resourceType();
@@ -104,19 +84,11 @@ async function checkTimes() {
             }
         });
 
-        await page.setExtraHTTPHeaders({
-            "user-agent":
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        });
-
-        console.log("Going to booking page...");
-        await page.goto("https://mingolf.golf.se/bokning/", {
+        console.log("Going to login...");
+        await page.goto("https://mingolf.golf.se/login/", {
             waitUntil: "domcontentloaded",
             timeout: 60000
         });
-
-        console.log("Current URL:", page.url());
 
         // 🔐 LOGIN
         console.log("Waiting for login...");
@@ -135,9 +107,20 @@ async function checkTimes() {
         console.log("Logged in...");
         await sleep(2000);
 
-        // 🔍 KLUBB
+        // 🔥 GÅ TILL RÄTT SIDA (VIKTIGASTE FIXEN)
+        console.log("Going to booking page...");
+        await page.goto("https://mingolf.golf.se/bokning/#/", {
+            waitUntil: "domcontentloaded",
+            timeout: 60000
+        });
+
+        console.log("Current URL:", page.url());
+        await sleep(4000);
+
+        // 🔍 SÖK KLUBB
         console.log("Searching club...");
         await page.waitForSelector("input", { timeout: 60000 });
+
         await page.type("input", "Vasatorp", { delay: 30 });
 
         await page.waitForSelector("li", { timeout: 60000 });
@@ -145,12 +128,10 @@ async function checkTimes() {
         const clubs = await page.$$("li");
         if (clubs.length > 0) await clubs[0].click();
 
-        await sleep(2000);
+        await sleep(3000);
 
-        // ⛳ BANA
+        // ⛳ VÄLJ BANA
         console.log("Selecting course...");
-        await page.waitForSelector("button", { timeout: 60000 });
-
         const buttons = await page.$$("button");
 
         for (const btn of buttons) {
@@ -163,23 +144,23 @@ async function checkTimes() {
 
         await sleep(3000);
 
-        // 📅 DATUM (🔥 NY FIX)
+        // 📅 DATUM
         console.log("Selecting date...");
+        const day = watchConfig.date.split("-")[2];
 
         const allButtons = await page.$$("button");
 
         for (const btn of allButtons) {
             const text = await page.evaluate(el => el.innerText, btn);
-
-            if (text.includes(watchConfig.date.split("-")[2])) {
+            if (text === day) {
                 await btn.click();
                 break;
             }
         }
 
-        await sleep(3000);
+        await sleep(4000);
 
-        // 🕒 TIDER (🔥 NY FIX)
+        // 🕒 HÄMTA TIDER
         console.log("Getting times...");
 
         const times = await page.evaluate(() => {
@@ -202,7 +183,7 @@ async function checkTimes() {
 
             await sendEmail(watchConfig.email, time);
 
-            status = `Bevakning klar - tid hittad: ${time}`;
+            status = `Tid hittad: ${time}`;
 
             if (job) job.stop();
             watchConfig = null;
@@ -233,7 +214,6 @@ app.post("/start", (req, res) => {
 
     checkTimes();
 
-    // 🔥 kör var 5 min (inte för ofta)
     job = cron.schedule("*/5 * * * *", checkTimes);
 
     res.sendStatus(200);
@@ -245,7 +225,7 @@ app.post("/stop", (req, res) => {
     if (job) job.stop();
 
     watchConfig = null;
-    status = "Bevakning stoppad";
+    status = "Stoppad";
 
     console.log("Watch stopped");
 
@@ -257,7 +237,7 @@ app.get("/status", (req, res) => {
     res.json({ status });
 });
 
-// 🌐 ROOT
+// ROOT
 app.get("/", (req, res) => {
     res.send("Servern funkar");
 });
