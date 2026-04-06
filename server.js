@@ -68,7 +68,7 @@ async function checkTimes() {
             ],
             executablePath: await chromium.executablePath(),
             headless: "new",
-            protocolTimeout: 120000
+            protocolTimeout: 180000
         });
 
         const page = await browser.newPage();
@@ -97,19 +97,19 @@ async function checkTimes() {
         console.log("Waiting for login...");
         await page.waitForSelector("input[type='password']", { visible: true });
 
-        const inputs = await page.$$("input:not([type='checkbox'])");
+        const loginInputs = await page.$$("input:not([type='checkbox'])");
 
         console.log("Typing login...");
-        await inputs[0].type(watchConfig.golfId, { delay: 30 });
-        await inputs[1].type(watchConfig.password, { delay: 30 });
+        await loginInputs[0].type(watchConfig.golfId, { delay: 30 });
+        await loginInputs[1].type(watchConfig.password, { delay: 30 });
 
         console.log("Submitting login...");
-        await inputs[1].press("Enter");
+        await loginInputs[1].press("Enter");
 
         await page.waitForNavigation({ waitUntil: "networkidle2" }).catch(() => {});
         console.log("Logged in...");
 
-        // 🔥 GÅ TILL BOKNING (RÄTT ROUTE)
+        // 👉 gå till bokning
         console.log("Going to booking page...");
         await page.goto("https://mingolf.golf.se/bokning/#/", {
             waitUntil: "domcontentloaded"
@@ -117,45 +117,51 @@ async function checkTimes() {
 
         await sleep(4000);
 
+        // 🔍 SEARCH CLUB (FIXAD)
         console.log("Searching club...");
 
         const searchInputs = await page.$$("input");
-        
+
         let searchInput = null;
-        
+
         for (const input of searchInputs) {
             const placeholder = await page.evaluate(el => el.placeholder, input);
-        
+
             if (placeholder && placeholder.toLowerCase().includes("klubb")) {
                 searchInput = input;
                 break;
             }
         }
-        
-        // fallback
+
         if (!searchInput) {
             searchInput = searchInputs[0];
         }
-        
-        await searchInput.click({ clickCount: 3 });
-        await searchInput.type("Vasatorp", { delay: 30 });
-        
+
+        await searchInput.focus();
+
+        await page.keyboard.down('Control');
+        await page.keyboard.press('A');
+        await page.keyboard.up('Control');
+        await page.keyboard.press('Backspace');
+
+        await page.keyboard.type("Vasatorp", { delay: 30 });
+
         await page.waitForSelector("li", { timeout: 10000 });
-        
+
         const clubs = await page.$$("li");
-        
+
         for (const club of clubs) {
             const text = await page.evaluate(el => el.innerText, club);
-        
+
             if (text.toLowerCase().includes("vasatorp")) {
                 await club.click();
                 break;
             }
         }
-        
+
         await sleep(3000);
 
-        // 🔥 RÄTT DROPDOWN (VIKTIGASTE FIXEN)
+        // 🔥 RÄTT DROPDOWN
         console.log("Opening club/course selector...");
 
         const selectors = await page.$$("button, div");
@@ -203,7 +209,7 @@ async function checkTimes() {
 
         await sleep(4000);
 
-        // 🕒 HÄMTA TIDER
+        // 🕒 TIMES
         console.log("Getting times...");
 
         const times = await page.evaluate(() => {
