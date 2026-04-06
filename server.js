@@ -113,24 +113,42 @@ async function checkTimes() {
             waitUntil: "domcontentloaded"
         });
 
-        await sleep(5000);
+        await sleep(6000);
 
-        // 🔥 KLICKA COURSE DROPDOWN (det enda du behöver)
-        console.log("Opening course dropdown...");
+        // FIND DROPDOWN
+        console.log("Finding course dropdown...");
 
-        await page.waitForSelector(".course-selection-molecule", { visible: true });
+        const elements = await page.$$("button, div");
 
-        const dropdown = await page.$(".course-selection-molecule");
+        let dropdown = null;
+
+        for (const el of elements) {
+            const text = await page.evaluate(e => e.innerText, el);
+
+            if (
+                text &&
+                (
+                    text.toLowerCase().includes("bana") ||
+                    text.toLowerCase().includes("course") ||
+                    text.toLowerCase().includes("tournament") ||
+                    text.toLowerCase().includes("park")
+                )
+            ) {
+                console.log("Dropdown candidate:", text);
+                dropdown = el;
+                break;
+            }
+        }
 
         if (!dropdown) {
-            throw new Error("Course dropdown hittades inte");
+            throw new Error("Hittade ingen dropdown för bana");
         }
 
         await dropdown.evaluate(el => el.click());
 
         await sleep(2000);
 
-        // 🔥 VÄLJ BANA
+        // SELECT COURSE (TOURNAMENT)
         console.log("Selecting course...");
 
         await page.waitForSelector("[role='option']", { timeout: 10000 });
@@ -142,7 +160,9 @@ async function checkTimes() {
         for (const opt of options) {
             const text = await page.evaluate(el => el.innerText, opt);
 
-            if (text.toLowerCase().includes("park")) {
+            console.log("Option:", text);
+
+            if (text.toLowerCase().includes("tournament")) {
                 await opt.click();
                 foundCourse = true;
                 break;
@@ -150,7 +170,7 @@ async function checkTimes() {
         }
 
         if (!foundCourse) {
-            throw new Error("Kunde inte hitta bana");
+            throw new Error("Kunde inte hitta Tournament Course");
         }
 
         await sleep(4000);
