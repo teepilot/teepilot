@@ -19,6 +19,7 @@ function sleep(ms) {
     return new Promise(r => setTimeout(r, ms));
 }
 
+// 📧 MAIL
 async function sendEmail(email, time) {
     try {
         await resend.emails.send({
@@ -34,7 +35,7 @@ async function sendEmail(email, time) {
     }
 }
 
-// 🔁 MAIN CHECK
+// 🔁 MAIN LOOP
 async function checkTimes() {
 
     if (!watchConfig) {
@@ -70,9 +71,29 @@ async function checkTimes() {
             waitUntil: "domcontentloaded"
         });
 
-        await page.waitForSelector("input[type='password']", { timeout: 10000 });
+        await sleep(3000);
 
-        const inputs = await page.$$("input:not([type='checkbox'])");
+        // 🔥 ACCEPTERA COOKIES
+        const buttons = await page.$$("button");
+
+        for (let btn of buttons) {
+            const text = await page.evaluate(el => el.innerText, btn);
+
+            if (text && text.toLowerCase().includes("acceptera")) {
+                await btn.click();
+                console.log("Accepted cookies");
+                break;
+            }
+        }
+
+        await sleep(2000);
+
+        // 🔥 HÄMTA INPUTS
+        const inputs = await page.$$("input");
+
+        if (inputs.length < 2) {
+            throw new Error("Login inputs not found");
+        }
 
         console.log("Typing login...");
         await inputs[0].type(watchConfig.golfId);
@@ -81,32 +102,33 @@ async function checkTimes() {
         console.log("Submitting login...");
         await inputs[1].press("Enter");
 
-        await sleep(3000);
+        await sleep(4000);
 
         console.log("Logged in...");
 
-        // 🚀 GÅ DIREKT TILL BOKNING
+        // 🚀 GÅ TILL BOKNING
         await page.goto("https://mingolf.golf.se/bokning/#/", {
             waitUntil: "domcontentloaded"
         });
 
-        await sleep(4000);
+        await sleep(5000);
 
         console.log("Searching club...");
 
         // 🔥 KLICKA "Vasatorp"
-        const buttons = await page.$$("button");
+        const clubButtons = await page.$$("button");
 
-        for (let btn of buttons) {
+        for (let btn of clubButtons) {
             const text = await page.evaluate(el => el.innerText, btn);
 
             if (text && text.toLowerCase().includes("vasatorp")) {
                 await btn.click();
+                console.log("Clicked Vasatorp");
                 break;
             }
         }
 
-        await sleep(2000);
+        await sleep(3000);
 
         console.log("Selecting course...");
 
@@ -118,11 +140,12 @@ async function checkTimes() {
 
             if (text && text.toLowerCase().includes("park")) {
                 await opt.click();
+                console.log("Selected Park Course");
                 break;
             }
         }
 
-        await sleep(3000);
+        await sleep(4000);
 
         console.log("Getting times...");
 
