@@ -73,7 +73,9 @@ async function checkTimes() {
 
         const page = await browser.newPage();
 
-        // 🔥 blocka tunga grejer
+        // 🔥 minska memory
+        await page.setCacheEnabled(false);
+
         await page.setRequestInterception(true);
         page.on("request", (req) => {
             const type = req.resourceType();
@@ -84,13 +86,13 @@ async function checkTimes() {
             }
         });
 
+        // 🔐 LOGIN
         console.log("Going to login...");
         await page.goto("https://mingolf.golf.se/login/", {
             waitUntil: "domcontentloaded",
             timeout: 60000
         });
 
-        // 🔐 LOGIN
         console.log("Waiting for login...");
         await page.waitForSelector("input[type='password']", { timeout: 60000 });
 
@@ -107,7 +109,7 @@ async function checkTimes() {
         console.log("Logged in...");
         await sleep(2000);
 
-        // 🔥 GÅ TILL RÄTT SIDA (VIKTIGASTE FIXEN)
+        // 🔥 GÅ TILL RÄTT SIDA
         console.log("Going to booking page...");
         await page.goto("https://mingolf.golf.se/bokning/#/", {
             waitUntil: "domcontentloaded",
@@ -117,7 +119,7 @@ async function checkTimes() {
         console.log("Current URL:", page.url());
         await sleep(4000);
 
-        // 🔍 SÖK KLUBB
+        // 🔍 KLUBB
         console.log("Searching club...");
         await page.waitForSelector("input", { timeout: 60000 });
 
@@ -130,14 +132,32 @@ async function checkTimes() {
 
         await sleep(3000);
 
-        // ⛳ VÄLJ BANA
-        console.log("Selecting course...");
-        const buttons = await page.$$("button");
+        // 🔥 ÖPPNA DROPDOWN
+        console.log("Opening course dropdown...");
 
-        for (const btn of buttons) {
+        const dropdowns = await page.$$("button");
+
+        for (const btn of dropdowns) {
             const text = await page.evaluate(el => el.innerText, btn);
-            if (text.includes("Park")) {
+
+            if (text.toLowerCase().includes("bana")) {
                 await btn.click();
+                break;
+            }
+        }
+
+        await sleep(2000);
+
+        // 🔥 VÄLJ BANA
+        console.log("Selecting course...");
+
+        const options = await page.$$("li, button");
+
+        for (const opt of options) {
+            const text = await page.evaluate(el => el.innerText, opt);
+
+            if (text.includes("Park")) {
+                await opt.click();
                 break;
             }
         }
@@ -148,10 +168,11 @@ async function checkTimes() {
         console.log("Selecting date...");
         const day = watchConfig.date.split("-")[2];
 
-        const allButtons = await page.$$("button");
+        const buttons = await page.$$("button");
 
-        for (const btn of allButtons) {
+        for (const btn of buttons) {
             const text = await page.evaluate(el => el.innerText, btn);
+
             if (text === day) {
                 await btn.click();
                 break;
@@ -160,11 +181,11 @@ async function checkTimes() {
 
         await sleep(4000);
 
-        // 🕒 HÄMTA TIDER
+        // 🕒 TIDER (memory-safe)
         console.log("Getting times...");
 
         const times = await page.evaluate(() => {
-            return Array.from(document.querySelectorAll("*"))
+            return Array.from(document.querySelectorAll("button, div"))
                 .map(el => el.innerText)
                 .filter(text => /^\d{2}:\d{2}$/.test(text));
         });
@@ -237,7 +258,6 @@ app.get("/status", (req, res) => {
     res.json({ status });
 });
 
-// ROOT
 app.get("/", (req, res) => {
     res.send("Servern funkar");
 });
