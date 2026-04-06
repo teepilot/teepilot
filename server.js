@@ -117,17 +117,42 @@ async function checkTimes() {
 
         await sleep(4000);
 
-        // 🔍 SÖK KLUBB
         console.log("Searching club...");
-        await page.waitForSelector("input", { visible: true });
 
-        await page.type("input", "Vasatorp", { delay: 30 });
-
-        await page.waitForSelector("li");
-
+        const searchInputs = await page.$$("input");
+        
+        let searchInput = null;
+        
+        for (const input of searchInputs) {
+            const placeholder = await page.evaluate(el => el.placeholder, input);
+        
+            if (placeholder && placeholder.toLowerCase().includes("klubb")) {
+                searchInput = input;
+                break;
+            }
+        }
+        
+        // fallback
+        if (!searchInput) {
+            searchInput = searchInputs[0];
+        }
+        
+        await searchInput.click({ clickCount: 3 });
+        await searchInput.type("Vasatorp", { delay: 30 });
+        
+        await page.waitForSelector("li", { timeout: 10000 });
+        
         const clubs = await page.$$("li");
-        if (clubs.length > 0) await clubs[0].click();
-
+        
+        for (const club of clubs) {
+            const text = await page.evaluate(el => el.innerText, club);
+        
+            if (text.toLowerCase().includes("vasatorp")) {
+                await club.click();
+                break;
+            }
+        }
+        
         await sleep(3000);
 
         // 🔥 RÄTT DROPDOWN (VIKTIGASTE FIXEN)
