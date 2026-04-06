@@ -1,6 +1,5 @@
 const express = require("express");
 const cors = require("cors");
-const fetch = require("node-fetch");
 const puppeteer = require("puppeteer-core");
 const chromium = require("@sparticuz/chromium");
 const cron = require("node-cron");
@@ -22,15 +21,21 @@ function sleep(ms) {
 }
 
 async function sendEmail(email, time) {
-    await resend.emails.send({
-        from: "TeePilot <onboarding@resend.dev>",
-        to: email,
-        subject: "TeeTime hittad ⛳",
-        html: `<h2>Tid hittad: ${time}</h2>`
-    });
+    try {
+        await resend.emails.send({
+            from: "TeePilot <onboarding@resend.dev>",
+            to: email,
+            subject: "TeeTime hittad ⛳",
+            html: `<h2>Tid hittad: ${time}</h2>`
+        });
+
+        console.log("Mail sent");
+    } catch (err) {
+        console.log("Mail error:", err);
+    }
 }
 
-// 🔐 LOGIN EN GÅNG → HÄMTA COOKIE
+// 🔐 LOGIN → HÄMTA COOKIE
 async function loginAndGetCookie() {
 
     console.log("Logging in to get cookie...");
@@ -58,7 +63,6 @@ async function loginAndGetCookie() {
     await page.waitForNavigation({ waitUntil: "networkidle2" });
 
     const cookies = await page.cookies();
-
     const mgat = cookies.find(c => c.name === "mgat");
 
     await browser.close();
@@ -69,7 +73,7 @@ async function loginAndGetCookie() {
     console.log("Got cookie ✅");
 }
 
-// 📡 HÄMTA TIDER VIA API
+// 📡 FETCH TIMES VIA API
 async function fetchTimes() {
 
     console.log("Fetching times via API...");
@@ -89,20 +93,19 @@ async function fetchTimes() {
 
     const data = await res.json();
 
-    // ⚠️ detta kan variera → logga första gången!
     console.log("API response:", JSON.stringify(data).slice(0, 500));
 
-    // försök hitta tider
-    const times = [];
+    let times = [];
 
+    // ⚠️ detta kan ändras → vi justerar efter din logg
     if (data?.times) {
-        data.times.forEach(t => times.push(t.time));
+        times = data.times.map(t => t.time);
     }
 
     return times;
 }
 
-// 🔁 CHECK
+// 🔁 CHECK LOOP
 async function checkTimes() {
 
     if (isRunning) return;
@@ -130,14 +133,14 @@ async function checkTimes() {
 
             await sendEmail(watchConfig.email, time);
 
-            job.stop();
+            if (job) job.stop();
             watchConfig = null;
         }
 
     } catch (err) {
         console.log("Error:", err);
 
-        // om cookie dör → logga in igen
+        // cookie expired → logga in igen nästa gång
         mgatCookie = null;
     }
 
@@ -162,9 +165,12 @@ app.post("/start", (req, res) => {
 
 // 🛑 STOP
 app.post("/stop", (req, res) => {
+
     if (job) job.stop();
+
     watchConfig = null;
     mgatCookie = null;
+
     res.sendStatus(200);
 });
 
@@ -173,4 +179,7 @@ app.get("/", (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Server running", PORT));
+
+app.listen(PORT, () => {
+    console.log("Server running on port", PORT);
+});
