@@ -115,54 +115,22 @@ async function checkTimes() {
 
         await sleep(5000);
 
-        // SEARCH CLUB
-        console.log("Searching club...");
-
-        const searchInput = await page.waitForSelector("input[placeholder*='klubb']", { visible: true });
-
-        await searchInput.click({ clickCount: 3 });
-        await searchInput.type("Vasatorp", { delay: 50 });
-
-        await sleep(2000);
-
-        await page.waitForSelector("[role='option']", { timeout: 10000 });
-
-        const clubs = await page.$$("[role='option']");
-
-        let foundClub = false;
-
-        for (const club of clubs) {
-            const text = await page.evaluate(el => el.innerText, club);
-
-            if (text.toLowerCase().includes("vasatorp")) {
-                await club.click();
-                foundClub = true;
-                break;
-            }
-        }
-
-        if (!foundClub) {
-            throw new Error("Kunde inte hitta klubben");
-        }
-
-        await sleep(4000);
-
-        // OPEN COURSE DROPDOWN
+        // 🔥 KLICKA COURSE DROPDOWN (det enda du behöver)
         console.log("Opening course dropdown...");
 
         await page.waitForSelector(".course-selection-molecule", { visible: true });
 
-        const courseDropdown = await page.$(".course-selection-molecule");
+        const dropdown = await page.$(".course-selection-molecule");
 
-        if (!courseDropdown) {
+        if (!dropdown) {
             throw new Error("Course dropdown hittades inte");
         }
 
-        await courseDropdown.evaluate(el => el.click());
+        await dropdown.evaluate(el => el.click());
 
         await sleep(2000);
 
-        // SELECT COURSE
+        // 🔥 VÄLJ BANA
         console.log("Selecting course...");
 
         await page.waitForSelector("[role='option']", { timeout: 10000 });
@@ -182,7 +150,7 @@ async function checkTimes() {
         }
 
         if (!foundCourse) {
-            throw new Error("Kunde inte hitta bana (Park)");
+            throw new Error("Kunde inte hitta bana");
         }
 
         await sleep(4000);
