@@ -20,6 +20,7 @@ function sleep(ms) {
     return new Promise(r => setTimeout(r, ms));
 }
 
+// 📧 MAIL
 async function sendEmail(email, time) {
     try {
         await resend.emails.send({
@@ -35,8 +36,10 @@ async function sendEmail(email, time) {
     }
 }
 
-// 🔐 LOGIN → HÄMTA COOKIE (FIXAD)
+// 🔐 LOGIN → HÄMTA COOKIE
 async function loginAndGetCookie() {
+
+    if (!watchConfig) throw new Error("No config in login");
 
     console.log("Logging in to get cookie...");
 
@@ -60,7 +63,7 @@ async function loginAndGetCookie() {
     await inputs[1].type(watchConfig.password);
     await inputs[1].press("Enter");
 
-    // 🔥 VÄNTA PÅ COOKIE ISTÄLLET FÖR NAVIGATION
+    // 🔥 Vänta på cookie istället för navigation
     let mgat = null;
 
     for (let i = 0; i < 20; i++) {
@@ -114,7 +117,17 @@ async function fetchTimes() {
 // 🔁 CHECK LOOP
 async function checkTimes() {
 
-    if (isRunning) return;
+    // ✅ FIX: stoppa om ingen config
+    if (!watchConfig) {
+        console.log("No config, skipping...");
+        return;
+    }
+
+    if (isRunning) {
+        console.log("Skipping - already running");
+        return;
+    }
+
     isRunning = true;
 
     try {
@@ -146,7 +159,7 @@ async function checkTimes() {
     } catch (err) {
         console.log("Error:", err);
 
-        // cookie expired → logga in igen nästa gång
+        // 🔄 cookie expired → logga in igen nästa gång
         mgatCookie = null;
     }
 
@@ -181,7 +194,7 @@ app.post("/stop", (req, res) => {
 });
 
 app.get("/", (req, res) => {
-    res.send("API server e igång");
+    res.send("API version running 🚀");
 });
 
 const PORT = process.env.PORT || 3000;
