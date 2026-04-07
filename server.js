@@ -117,7 +117,6 @@ async function checkTimes() {
 
         // COOKIE
         console.log("Handling cookie popup...");
-
         try {
             const buttons = await page.$$("button");
 
@@ -133,15 +132,15 @@ async function checkTimes() {
             }
         } catch {}
 
-        // 🔥 XPATH DROPDOWN (STABILASTE)
-        console.log("Opening course dropdown (XPath)...");
+        // 🔥 DROPDOWN (STABIL CSS)
+        console.log("Opening course dropdown...");
 
-        const [dropdown] = await page.$x(
-            "//div[contains(@class,'selection') and contains(@class,'course')]"
-        );
+        await page.waitForSelector("div[class*='course-selection']", { timeout: 15000 });
+
+        const dropdown = await page.$("div[class*='course-selection']");
 
         if (!dropdown) {
-            throw new Error("Dropdown hittades inte via XPath");
+            throw new Error("Dropdown hittades inte");
         }
 
         await dropdown.click();
