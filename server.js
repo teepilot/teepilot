@@ -15,22 +15,21 @@ app.use(express.json());
 let job = null;
 let watchConfig = null;
 let isRunning = false;
-
 let status = "Ingen aktiv bevakning";
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// 🔥 GENERISK TEXT-KLICK
-async function clickByText(page, textMatch) {
+// 🔥 klicka element via text (robust)
+async function clickByText(page, match) {
     const elements = await page.$$("div, button, span");
 
     for (const el of elements) {
         const text = await page.evaluate(e => e.innerText, el);
         if (!text) continue;
 
-        if (text.toLowerCase().includes(textMatch.toLowerCase())) {
+        if (text.toLowerCase().includes(match.toLowerCase())) {
             await el.click();
             return true;
         }
@@ -43,11 +42,11 @@ async function sendEmail(email, time) {
         await resend.emails.send({
             from: "TeePilot <onboarding@resend.dev>",
             to: email,
-            subject: "TeeTime hittad ⛳!",
-            html: `<h2>TeeTime hittad!</h2><p>Tid: ${time}</p>`
+            subject: "TeeTime hittad ⛳",
+            html: `<h2>TeeTime hittad!</h2><p>${time}</p>`
         });
     } catch (err) {
-        console.log("Email error:", err);
+        console.log("Mail error:", err);
     }
 }
 
@@ -69,63 +68,68 @@ async function checkTimes() {
     let browser;
 
     try {
-
         browser = await puppeteer.launch({
-            args: [...chromium.args, "--no-sandbox"],
+            args: [
+              ...chromium.args,
+              "--no-sandbox",
+              "--disable-setuid-sandbox"
+            ],
             executablePath: await chromium.executablePath(),
-            headless: "new"
-        });
+            headless: true
+          });
 
         const page = await browser.newPage();
 
-        await page.setDefaultTimeout(30000);
+        await page.setDefaultTimeout(60000);
 
-        // LOGIN
-        console.log("Going to login...");
-        await page.goto("https://mingolf.golf.se/login/", {
-            waitUntil: "domcontentloaded"
-        });
-
-        await page.waitForSelector("input[type='password']");
-
-        const inputs = await page.$$("input:not([type='checkbox'])");
-
-        console.log("Typing login...");
-        await inputs[0].type(watchConfig.golfId);
-        await inputs[1].type(watchConfig.password);
-
-        console.log("Submitting login...");
-        await inputs[1].press("Enter");
-
-        await page.waitForNavigation({ waitUntil: "domcontentloaded" }).catch(() => {});
-        console.log("Logged in...");
-
-        // BOOKING PAGE
-        console.log("Going to booking page...");
+        // 🔥 GÅ DIREKT TILL BOOKING (fixar login-problemet)
+        console.log("Opening booking page...");
         await page.goto("https://mingolf.golf.se/bokning/#/", {
             waitUntil: "domcontentloaded"
         });
 
+        await sleep(5000);
+
+        // 🔥 LOGIN (robust)
+        console.log("Checking login...");
+        const inputs = await page.$$("input");
+
+        if (inputs.length >= 2) {
+            console.log("Typing login...");
+
+            await inputs[0].type(watchConfig.golfId, { delay: 50 });
+            await inputs[1].type(watchConfig.password, { delay: 50 });
+
+            await inputs[1].press("Enter");
+
+            await page.waitForNavigation({
+                waitUntil: "domcontentloaded",
+                timeout: 60000
+            }).catch(() => {});
+
+            console.log("Logged in...");
+        }
+
         await sleep(8000);
 
         // COOKIE
-        console.log("Handling cookie popup...");
+        console.log("Handling cookies...");
         await clickByText(page, "acceptera");
         await sleep(2000);
 
-        // 🔥 KLICKA KLUBB + BANA
-        console.log("Opening club/course...");
-        const opened = await clickByText(page, "klubb");
+        // 🔥 ÖPPNA KLUBB + BANA (RÄTT ELEMENT)
+        console.log("Opening club/bana...");
+        const opened = await clickByText(page, "klubb och bana");
 
         if (!opened) throw new Error("Kunde inte öppna klubb/bana");
 
         await sleep(3000);
 
-        // 🔥 VÄLJ BANA
+        // 🔥 VÄLJ TOURNAMENT COURSE
         console.log("Selecting Tournament Course...");
         const selected = await clickByText(page, "tournament");
 
-        if (!selected) throw new Error("Tournament Course hittades inte");
+        if (!selected) throw new Error("Hittade inte Tournament Course");
 
         await sleep(4000);
 
@@ -144,7 +148,7 @@ async function checkTimes() {
 
         await sleep(4000);
 
-        // TIMES
+        // 🔥 HÄMTA TIDER
         console.log("Getting times...");
         const times = await page.evaluate(() =>
             Array.from(document.querySelectorAll("button, div"))
@@ -182,7 +186,7 @@ async function checkTimes() {
     }
 }
 
-// START
+// ROUTES
 app.post("/start", (req, res) => {
 
     watchConfig = req.body;
@@ -198,7 +202,6 @@ app.post("/start", (req, res) => {
     res.sendStatus(200);
 });
 
-// STOP
 app.post("/stop", (req, res) => {
 
     if (job) job.stop();
@@ -209,7 +212,6 @@ app.post("/stop", (req, res) => {
     res.sendStatus(200);
 });
 
-// STATUS
 app.get("/status", (req, res) => {
     res.json({ status });
 });
