@@ -37,6 +37,45 @@ async function sendEmail(email, time) {
     }
 }
 
+async function clickCourseDropdown(page) {
+
+    console.log("Trying to find dropdown via position...");
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+
+        const buttons = await page.$$("div, button");
+
+        for (const el of buttons) {
+            const text = await page.evaluate(e => e.innerText, el);
+
+            if (!text) continue;
+
+            const t = text.toLowerCase();
+
+            // 🔥 SKIP COOKIE & SKRÄP
+            if (t.length > 80) continue;
+            if (t.includes("reklam") || t.includes("cookies")) continue;
+
+            // 🔥 DETTA ÄR KEY
+            if (
+                t.includes("hål") ||
+                t.includes("course") ||
+                t.includes("tournament") ||
+                t.includes("park")
+            ) {
+                console.log("Found dropdown:", text);
+                await el.click();
+                return true;
+            }
+        }
+
+        console.log("Retry dropdown...");
+        await sleep(2000);
+    }
+
+    return false;
+}
+
 async function checkTimes() {
 
     if (isRunning) {
@@ -75,17 +114,6 @@ async function checkTimes() {
 
         await page.setCacheEnabled(false);
         await page.setDefaultTimeout(30000);
-        await page.setDefaultNavigationTimeout(30000);
-
-        await page.setRequestInterception(true);
-        page.on("request", (req) => {
-            const type = req.resourceType();
-            if (["image", "stylesheet", "font", "media"].includes(type)) {
-                req.abort();
-            } else {
-                req.continue();
-            }
-        });
 
         // LOGIN
         console.log("Going to login...");
@@ -93,68 +121,60 @@ async function checkTimes() {
             waitUntil: "domcontentloaded"
         });
 
-        await page.waitForSelector("input[type='password']", { visible: true });
+        await page.waitForSelector("input[type='password']");
 
-        const loginInputs = await page.$$("input:not([type='checkbox'])");
+        const inputs = await page.$$("input:not([type='checkbox'])");
 
         console.log("Typing login...");
-        await loginInputs[0].type(watchConfig.golfId, { delay: 30 });
-        await loginInputs[1].type(watchConfig.password, { delay: 30 });
+        await inputs[0].type(watchConfig.golfId);
+        await inputs[1].type(watchConfig.password);
 
         console.log("Submitting login...");
-        await loginInputs[1].press("Enter");
+        await inputs[1].press("Enter");
 
         await page.waitForNavigation({ waitUntil: "networkidle2" }).catch(() => {});
         console.log("Logged in...");
 
-        // BOOKING PAGE
+        // BOOKING
         console.log("Going to booking page...");
         await page.goto("https://mingolf.golf.se/bokning/#/", {
-            waitUntil: "domcontentloaded"
+            waitUntil: "networkidle2"
         });
 
-        await sleep(6000);
+        await sleep(8000);
 
         // COOKIE
         console.log("Handling cookie popup...");
         try {
-            const buttons = await page.$$("button");
-
-            for (const btn of buttons) {
-                const text = await page.evaluate(el => el.innerText, btn);
-
-                if (text && text.toLowerCase().includes("acceptera")) {
-                    console.log("Accepting cookies...");
-                    await btn.click();
+            const btns = await page.$$("button");
+            for (const b of btns) {
+                const t = await page.evaluate(el => el.innerText, b);
+                if (t && t.toLowerCase().includes("acceptera")) {
+                    console.log("Accepted cookies");
+                    await b.click();
                     await sleep(2000);
                     break;
                 }
             }
         } catch {}
 
-        // 🔥 DROPDOWN (STABIL CSS)
-        console.log("Opening course dropdown...");
+        // 🔥 DROPDOWN (FINAL FIX)
+        console.log("Opening dropdown...");
 
-        await page.waitForSelector("div[class*='course-selection']", { timeout: 15000 });
+        const opened = await clickCourseDropdown(page);
 
-        const dropdown = await page.$("div[class*='course-selection']");
-
-        if (!dropdown) {
-            throw new Error("Dropdown hittades inte");
+        if (!opened) {
+            throw new Error("Kunde inte hitta dropdown (final fail)");
         }
 
-        await dropdown.click();
-
-        await sleep(2000);
+        await sleep(3000);
 
         // SELECT COURSE
         console.log("Selecting Tournament Course...");
 
-        await page.waitForSelector("li, [role='option']", { timeout: 15000 });
-
         const options = await page.$$("[role='option'], li");
 
-        let foundCourse = false;
+        let found = false;
 
         for (const opt of options) {
             const text = await page.evaluate(el => el.innerText, opt);
@@ -165,12 +185,12 @@ async function checkTimes() {
 
             if (text.toLowerCase().includes("tournament")) {
                 await opt.click();
-                foundCourse = true;
+                found = true;
                 break;
             }
         }
 
-        if (!foundCourse) {
+        if (!found) {
             throw new Error("Tournament Course hittades inte");
         }
 
@@ -180,13 +200,12 @@ async function checkTimes() {
         console.log("Selecting date...");
         const day = watchConfig.date.split("-")[2];
 
-        const buttons = await page.$$("button");
+        const btns = await page.$$("button");
 
-        for (const btn of buttons) {
-            const text = await page.evaluate(el => el.innerText, btn);
-
-            if (text === day) {
-                await btn.click();
+        for (const b of btns) {
+            const t = await page.evaluate(el => el.innerText, b);
+            if (t === day) {
+                await b.click();
                 break;
             }
         }
@@ -199,19 +218,17 @@ async function checkTimes() {
         const times = await page.evaluate(() => {
             return Array.from(document.querySelectorAll("button, div"))
                 .map(el => el.innerText)
-                .filter(text => /^\d{2}:\d{2}$/.test(text));
+                .filter(t => /^\d{2}:\d{2}$/.test(t));
         });
 
         console.log("Times found:", times);
 
-        const available = times.filter(t => {
-            return t >= watchConfig.from && t <= watchConfig.to;
-        });
+        const available = times.filter(t =>
+            t >= watchConfig.from && t <= watchConfig.to
+        );
 
         if (available.length > 0) {
-
             const time = available[0];
-
             console.log("TEE TIME FOUND:", time);
 
             await sendEmail(watchConfig.email, time);
@@ -226,18 +243,14 @@ async function checkTimes() {
         console.log("Error:", err);
     } finally {
         if (browser) {
-            try {
-                await browser.close();
-            } catch {}
+            try { await browser.close(); } catch {}
         }
-
         isRunning = false;
     }
 }
 
-// START
+// ROUTES
 app.post("/start", (req, res) => {
-
     watchConfig = req.body;
     status = "Bevakning aktiv";
 
@@ -246,36 +259,22 @@ app.post("/start", (req, res) => {
     if (job) job.stop();
 
     checkTimes();
-
     job = cron.schedule("*/5 * * * *", checkTimes);
 
     res.sendStatus(200);
 });
 
-// STOP
 app.post("/stop", (req, res) => {
-
     if (job) job.stop();
-
     watchConfig = null;
     status = "Stoppad";
-
-    console.log("Watch stopped");
-
     res.sendStatus(200);
 });
 
-// STATUS
 app.get("/status", (req, res) => {
     res.json({ status });
 });
 
-app.get("/", (req, res) => {
-    res.send("Servern funkar");
-});
-
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-    console.log("Server running on port", PORT);
+app.listen(process.env.PORT || 3000, () => {
+    console.log("Server running");
 });
