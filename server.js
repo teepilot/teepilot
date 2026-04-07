@@ -16,79 +16,39 @@ let job = null;
 let watchConfig = null;
 let isRunning = false;
 
+let status = "Ingen aktiv bevakning";
+
 function sleep(ms) {
-    return new Promise(r => setTimeout(r, ms));
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// 🔥 GENERISK TEXT-KLICK
+async function clickByText(page, textMatch) {
+    const elements = await page.$$("div, button, span");
+
+    for (const el of elements) {
+        const text = await page.evaluate(e => e.innerText, el);
+        if (!text) continue;
+
+        if (text.toLowerCase().includes(textMatch.toLowerCase())) {
+            await el.click();
+            return true;
+        }
+    }
+    return false;
 }
 
 async function sendEmail(email, time) {
-    await resend.emails.send({
-        from: "TeePilot <onboarding@resend.dev>",
-        to: email,
-        subject: "TeeTime hittad ⛳!",
-        html: `<h2>TeeTime hittad!</h2><p>${time}</p>`
-    });
-}
-
-async function safeGoto(page, url) {
-    for (let i = 0; i < 3; i++) {
-        try {
-            await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
-            return;
-        } catch {
-            console.log("Retrying navigation...");
-            await sleep(2000);
-        }
+    try {
+        await resend.emails.send({
+            from: "TeePilot <onboarding@resend.dev>",
+            to: email,
+            subject: "TeeTime hittad ⛳!",
+            html: `<h2>TeeTime hittad!</h2><p>Tid: ${time}</p>`
+        });
+    } catch (err) {
+        console.log("Email error:", err);
     }
-    throw new Error("Kunde inte ladda sida");
-}
-
-async function acceptCookies(page) {
-    const buttons = await page.$$("button");
-    for (const b of buttons) {
-        const t = await page.evaluate(el => el.innerText, b);
-        if (t && t.toLowerCase().includes("acceptera")) {
-            console.log("Accepted cookies");
-            await b.click();
-            await sleep(2000);
-            return;
-        }
-    }
-}
-
-async function openDropdown(page) {
-    console.log("Opening dropdown...");
-
-    for (let attempt = 0; attempt < 5; attempt++) {
-
-        const els = await page.$$("div, button");
-
-        for (const el of els) {
-            const text = await page.evaluate(e => e.innerText, el);
-
-            if (!text) continue;
-
-            const t = text.toLowerCase();
-
-            if (t.length > 80) continue;
-            if (t.includes("reklam") || t.includes("cookies")) continue;
-
-            if (
-                t.includes("hål") ||
-                t.includes("course") ||
-                t.includes("tournament") ||
-                t.includes("park")
-            ) {
-                console.log("Dropdown found:", text);
-                await el.click();
-                return true;
-            }
-        }
-
-        console.log("Retry dropdown...");
-        await sleep(2000);
-    }
-
-    return false;
 }
 
 async function checkTimes() {
@@ -99,6 +59,12 @@ async function checkTimes() {
     }
 
     isRunning = true;
+    console.log("checkTimes körs");
+
+    if (!watchConfig) {
+        isRunning = false;
+        return;
+    }
 
     let browser;
 
@@ -112,104 +78,117 @@ async function checkTimes() {
 
         const page = await browser.newPage();
 
+        await page.setDefaultTimeout(30000);
+
         // LOGIN
         console.log("Going to login...");
-        await safeGoto(page, "https://mingolf.golf.se/login/");
+        await page.goto("https://mingolf.golf.se/login/", {
+            waitUntil: "domcontentloaded"
+        });
 
         await page.waitForSelector("input[type='password']");
 
         const inputs = await page.$$("input:not([type='checkbox'])");
 
+        console.log("Typing login...");
         await inputs[0].type(watchConfig.golfId);
         await inputs[1].type(watchConfig.password);
 
+        console.log("Submitting login...");
         await inputs[1].press("Enter");
 
         await page.waitForNavigation({ waitUntil: "domcontentloaded" }).catch(() => {});
+        console.log("Logged in...");
 
-        console.log("Logged in");
-
-        // BOOKING
+        // BOOKING PAGE
         console.log("Going to booking page...");
-        await safeGoto(page, "https://mingolf.golf.se/bokning/#/");
+        await page.goto("https://mingolf.golf.se/bokning/#/", {
+            waitUntil: "domcontentloaded"
+        });
 
         await sleep(8000);
 
-        await acceptCookies(page);
+        // COOKIE
+        console.log("Handling cookie popup...");
+        await clickByText(page, "acceptera");
+        await sleep(2000);
 
-        // DROPDOWN
-        const ok = await openDropdown(page);
+        // 🔥 KLICKA KLUBB + BANA
+        console.log("Opening club/course...");
+        const opened = await clickByText(page, "klubb");
 
-        if (!ok) throw new Error("Dropdown hittades inte");
+        if (!opened) throw new Error("Kunde inte öppna klubb/bana");
 
         await sleep(3000);
 
-        // SELECT COURSE
-        const options = await page.$$("[role='option'], li");
+        // 🔥 VÄLJ BANA
+        console.log("Selecting Tournament Course...");
+        const selected = await clickByText(page, "tournament");
 
-        let found = false;
-
-        for (const o of options) {
-            const text = await page.evaluate(el => el.innerText, o);
-
-            if (!text) continue;
-
-            console.log("Option:", text);
-
-            if (text.toLowerCase().includes("tournament")) {
-                await o.click();
-                found = true;
-                break;
-            }
-        }
-
-        if (!found) throw new Error("Course ej hittad");
+        if (!selected) throw new Error("Tournament Course hittades inte");
 
         await sleep(4000);
 
-        // DATE
-        const day = watchConfig.date.split("-")[2];
+        // 🔥 DATUM
+        console.log("Opening date picker...");
+        const dateOpened = await clickByText(page, "när vill du spela");
 
-        const buttons = await page.$$("button");
+        if (dateOpened) {
+            await sleep(2000);
 
-        for (const b of buttons) {
-            const t = await page.evaluate(el => el.innerText, b);
-            if (t === day) {
-                await b.click();
-                break;
-            }
+            const day = watchConfig.date.split("-")[2];
+            console.log("Selecting day:", day);
+
+            await clickByText(page, day);
         }
 
         await sleep(4000);
 
         // TIMES
+        console.log("Getting times...");
         const times = await page.evaluate(() =>
             Array.from(document.querySelectorAll("button, div"))
                 .map(el => el.innerText)
                 .filter(t => /^\d{2}:\d{2}$/.test(t))
         );
 
+        console.log("Times found:", times);
+
         const available = times.filter(t =>
             t >= watchConfig.from && t <= watchConfig.to
         );
 
         if (available.length > 0) {
+
             const time = available[0];
-            console.log("FOUND:", time);
+
+            console.log("TEE TIME FOUND:", time);
+
             await sendEmail(watchConfig.email, time);
+
+            status = `Tid hittad: ${time}`;
+
+            if (job) job.stop();
+            watchConfig = null;
         }
 
     } catch (err) {
         console.log("Error:", err);
     } finally {
-        if (browser) await browser.close();
+        if (browser) {
+            try { await browser.close(); } catch {}
+        }
         isRunning = false;
     }
 }
 
-// ROUTES
+// START
 app.post("/start", (req, res) => {
+
     watchConfig = req.body;
+    status = "Bevakning aktiv";
+
+    console.log("Watch started:", watchConfig);
 
     if (job) job.stop();
 
@@ -219,6 +198,28 @@ app.post("/start", (req, res) => {
     res.sendStatus(200);
 });
 
-app.listen(process.env.PORT || 3000, () => {
-    console.log("Server running");
+// STOP
+app.post("/stop", (req, res) => {
+
+    if (job) job.stop();
+
+    watchConfig = null;
+    status = "Stoppad";
+
+    res.sendStatus(200);
+});
+
+// STATUS
+app.get("/status", (req, res) => {
+    res.json({ status });
+});
+
+app.get("/", (req, res) => {
+    res.send("Servern funkar");
+});
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+    console.log("Server running on port", PORT);
 });
