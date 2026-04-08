@@ -1,6 +1,5 @@
 const { Resend } = require("resend");
 const resend = new Resend("re_LHA5wWw6_86BChTR6dCeieuj3W9y3z85U");
-
 const express = require("express");
 const cors = require("cors");
 const puppeteer = require("puppeteer-core");
@@ -8,7 +7,6 @@ const chromium = require("@sparticuz/chromium");
 const cron = require("node-cron");
 
 const app = express();
-
 app.use(cors());
 app.use(express.json());
 
@@ -17,69 +15,37 @@ let watchConfig = null;
 let isRunning = false;
 let status = "Ingen aktiv bevakning";
 
-function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
-// 🔥 FÖRBÄTTRAD KLICK-FUNKTION
-async function clickByText(page, match) {
+// Kraftfullare klick-funktion som letar efter text i listor/dropdowns
+async function clickDropdownItem(page, match) {
     try {
-        // Vänta tills elementet faktiskt finns i DOM:en
         await page.waitForFunction(
             (text) => {
-                const elements = Array.from(document.querySelectorAll("div, button, span, a, li"));
-                return elements.some(el => el.innerText.toLowerCase().includes(text.toLowerCase()));
+                const items = Array.from(document.querySelectorAll(".v-list-item, .v-list-item__title, span, div"));
+                return items.some(i => i.innerText.toLowerCase().includes(text.toLowerCase()));
             },
-            { timeout: 10000 },
+            { timeout: 5000 },
             match
         );
 
-        // Utför klicket direkt i webbläsarkontexten för att ignorera overlays
-        const clicked = await page.evaluate((text) => {
-            const elements = Array.from(document.querySelectorAll("div, button, span, a, li"));
-            const el = elements.find(e => e.innerText.toLowerCase().includes(text.toLowerCase()));
-            if (el) {
-                el.scrollIntoView();
-                el.click(); // "Force click"
+        return await page.evaluate((text) => {
+            const items = Array.from(document.querySelectorAll(".v-list-item, .v-list-item__title, span, div"));
+            const target = items.find(i => i.innerText.trim().toLowerCase().includes(text.toLowerCase()));
+            if (target) {
+                target.click();
                 return true;
             }
             return false;
         }, match);
-
-        if (clicked) console.log(`Klickade på: "${match}"`);
-        return clicked;
-    } catch (err) {
-        console.log(`Misslyckades att klicka på: "${match}"`);
-        return false;
-    }
-}
-
-async function sendEmail(email, time) {
-    try {
-        await resend.emails.send({
-            from: "TeePilot <onboarding@resend.dev>",
-            to: email,
-            subject: "TeeTime hittad ⛳",
-            html: `<h2>TeeTime hittad!</h2><p>En tid har hittats: ${time}</p>`
-        });
-    } catch (err) {
-        console.log("Mail error:", err);
-    }
+    } catch (e) { return false; }
 }
 
 async function checkTimes() {
-    if (isRunning) {
-        console.log("Skipping - körning pågår redan");
-        return;
-    }
-
-    if (!watchConfig) return;
-
+    if (isRunning || !watchConfig) return;
     isRunning = true;
-    console.log("Startar sökning...");
 
     let browser;
-
     try {
         browser = await puppeteer.launch({
             args: [...chromium.args, "--no-sandbox", "--disable-setuid-sandbox"],
@@ -88,117 +54,124 @@ async function checkTimes() {
         });
 
         const page = await browser.newPage();
-        await page.setDefaultTimeout(60000);
-
-        console.log("Öppnar Min Golf...");
-        await page.goto("https://mingolf.golf.se/bokning/#/", {
-            waitUntil: "networkidle2"
-        });
+        await page.setViewport({ width: 1280, height: 900 });
+        await page.goto("https://mingolf.golf.se/bokning/#/", { waitUntil: "networkidle2" });
 
         await sleep(5000);
 
-        // 1. LOGIN
+        // --- 1. LOGIN ---
         const inputs = await page.$$("input");
         if (inputs.length >= 2) {
-            console.log("Loggar in...");
-            await inputs[0].type(watchConfig.golfId, { delay: 50 });
-            await inputs[1].type(watchConfig.password, { delay: 50 });
+            await inputs[0].type(watchConfig.golfId);
+            await inputs[1].type(watchConfig.password);
             await inputs[1].press("Enter");
-            await sleep(8000);
+            await sleep(7000);
         }
 
-        // 2. COOKIES (Aggressiv hantering)
-        console.log("Hanterar cookies...");
-        const cookieButtons = ["acceptera alla", "godkänn alla", "acceptera", "ok"];
-        for (const btn of cookieButtons) {
-            const success = await clickByText(page, btn);
-            if (success) break;
-        }
-        
-        // Tvinga bort eventuella overlays som blockerar klick
+        // --- 2. HANTERA COOKIES ---
         await page.evaluate(() => {
-            const overlays = document.querySelectorAll('[id*="sp_message"], [class*="cookie"], [class*="modal"]');
-            overlays.forEach(el => el.remove());
-            document.body.style.overflow = 'auto';
+            const btns = Array.from(document.querySelectorAll('button'));
+            const ok = btns.find(b => b.innerText.toLowerCase().includes('acceptera') || b.innerText.toLowerCase().includes('ok'));
+            if (ok) ok.click();
+        });
+        await sleep(2000);
+
+        // --- 3. VÄLJ BANA VIA DROPDOWN ---
+        console.log("Öppnar ban-dropdown...");
+        // Klickar på rutan för Klubb och Bana
+        await page.click('.v-select__slot'); 
+        await sleep(2000);
+        
+        // Här väljer vi "Tournament Course" direkt i dropdownen
+        const courseSelected = await clickDropdownItem(page, "Tournament Course");
+        if (!courseSelected) {
+            console.log("Kunde inte hitta banan i listan, försöker söka...");
+            const search = await page.$('input[placeholder*="Sök"]');
+            if (search) {
+                await search.type("Vasatorps Golfklubb");
+                await sleep(2000);
+                await clickDropdownItem(page, "Tournament Course");
+            }
+        }
+
+        // --- 4. VÄLJ DATUM VIA KALENDER ---
+        console.log("Öppnar kalender...");
+        // Klickar på "När vill du spela"
+        await page.evaluate(() => {
+            const dateSection = Array.from(document.querySelectorAll('div')).find(d => d.innerText.includes('När vill du spela'));
+            if (dateSection) dateSection.click();
+        });
+        await sleep(2000);
+
+        const dayToSelect = watchConfig.date.split("-")[2].replace(/^0+/, ''); 
+        console.log(`Klickar på datum: ${dayToSelect}`);
+        
+        // Letar efter rätt dag i kalendern (.v-btn__content brukar siffrorna ligga i)
+        await page.evaluate((day) => {
+            const days = Array.from(document.querySelectorAll('.v-btn__content, .v-date-picker-table button'));
+            const targetDay = days.find(d => d.innerText.trim() === day);
+            if (targetDay) targetDay.click();
+        }, dayToSelect);
+        
+        await sleep(4000); // Vänta på att tiderna laddas om
+
+        // --- 5. LÄS AV TIDER ---
+        const slots = await page.evaluate(() => {
+            // Hittar alla element som ser ut som tids-knappar
+            return Array.from(document.querySelectorAll('button, .v-card'))
+                .map(el => el.innerText)
+                .filter(txt => /\d{2}:\d{2}/.test(txt) && !txt.includes("Fullbokad") && !txt.includes("Ej bokningsbar"));
         });
 
-        await sleep(2000);
+        console.log("Hittade lediga tider:", slots);
 
-        // 3. NAVIGERING
-        console.log("Öppnar klubbväljaren...");
-        const opened = await clickByText(page, "klubb och bana");
-        if (!opened) throw new Error("Kunde inte öppna klubb/bana-menyn");
+        const match = slots.find(s => {
+            const time = s.match(/\d{2}:\d{2}/)[0];
+            return time >= watchConfig.from && time <= watchConfig.to;
+        });
 
-        await sleep(3000);
-        await clickByText(page, "tournament"); // Vasatorp Tournament Course
-        await sleep(3000);
-
-        // 4. DATUM
-        console.log("Väljer datum...");
-        await clickByText(page, "när vill du spela");
-        await sleep(2000);
-        const day = watchConfig.date.split("-")[2].replace(/^0+/, ''); // Tar bort nollor, t.ex "05" blir "5"
-        await clickByText(page, day);
-        await sleep(4000);
-
-        // 5. KONTROLLERA TIDER
-        console.log("Hämtar tillgängliga tider...");
-        const times = await page.evaluate(() =>
-            Array.from(document.querySelectorAll("button, div"))
-                .map(el => el.innerText.trim())
-                .filter(t => /^\d{2}:\d{2}$/.test(t))
-        );
-
-        const available = times.filter(t => t >= watchConfig.from && t <= watchConfig.to);
-
-        if (available.length > 0) {
-            const foundTime = available[0];
-            console.log("TRÄFF! Hittade tid:", foundTime);
-            await sendEmail(watchConfig.email, foundTime);
-            status = `Tid hittad: ${foundTime}`;
+        if (match) {
+            const finalTime = match.match(/\d{2}:\d{2}/)[0];
+            await resend.emails.send({
+                from: "TeePilot <onboarding@resend.dev>",
+                to: watchConfig.email,
+                subject: "TeeTime hittad! ⛳",
+                html: `<h3>Tid hittad på Vasatorp!</h3><p>Det finns en ledig tid kl <b>${finalTime}</b>.</p>`
+            });
+            status = `Tid hittad: ${finalTime}`;
             if (job) job.stop();
             watchConfig = null;
         } else {
-            console.log("Inga tider hittade just nu.");
-            status = `Bevakning aktiv (Senast kollad ${new RegExp(/\d{2}:\d{2}/).exec(new Date().toString())})`;
+            status = `Kollat ${new Date().toLocaleTimeString()}: Inga tider lediga.`;
         }
 
     } catch (err) {
-        console.log("Ett fel uppstod:", err.message);
+        console.log("Fel i körning:", err.message);
+        status = "Ett fel uppstod vid senaste sökningen.";
     } finally {
         if (browser) await browser.close();
         isRunning = false;
     }
 }
 
-// API ROUTES
+// Standard API-endpunkter
 app.post("/start", (req, res) => {
     watchConfig = req.body;
-    status = "Bevakning startad...";
-    console.log("Ny bevakning konfigurerad:", watchConfig);
-
+    status = "Bevakning startad";
     if (job) job.stop();
-    
-    // Kör direkt en gång, sen var 5:e minut
-    checkTimes();
+    checkTimes(); // Kör direkt
     job = cron.schedule("*/5 * * * *", checkTimes);
-
     res.sendStatus(200);
 });
 
 app.post("/stop", (req, res) => {
     if (job) job.stop();
     watchConfig = null;
-    status = "Ingen aktiv bevakning";
-    console.log("Bevakning stoppad manuellt.");
+    status = "Stoppad";
     res.sendStatus(200);
 });
 
-app.get("/status", (req, res) => {
-    res.json({ status });
-});
+app.get("/status", (req, res) => res.json({ status }));
+app.get("/", (req, res) => res.send("TeePilot Server Ready"));
 
-app.get("/", (req, res) => res.send("TeePilot Server is online"));
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Server redo på port", PORT));
+app.listen(process.env.PORT || 3000);
