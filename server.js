@@ -14,13 +14,15 @@ let job = null;
 let watchConfig = null;
 let status = "Ingen aktiv bevakning";
 
-// Startsida för att bekräfta att servern lever
+// Enkel hemsida för att se status direkt i webbläsaren
 app.get("/", (req, res) => {
     res.send(`
         <div style="font-family: sans-serif; text-align: center; padding: 50px;">
             <h1>⛳ TeePilot Server is Online</h1>
             <p>Status: <strong>${status}</strong></p>
-            ${watchConfig ? `<p>Bevakar: ${watchConfig.date} (${watchConfig.from}-${watchConfig.to})</p>` : ''}
+            ${watchConfig ? `<p>Bevakar just nu: ${watchConfig.date} (${watchConfig.from}-${watchConfig.to})</p>` : ''}
+            <hr style="width: 50%; margin: 20px auto;">
+            <p style="color: gray; font-size: 0.8em;">Körs på Render Free Tier</p>
         </div>
     `);
 });
@@ -30,7 +32,7 @@ async function checkTimes() {
 
     let browser = null;
     try {
-        console.log(`[${new Date().toLocaleTimeString()}] Startar koll för ${watchConfig.date}...`);
+        console.log(`[${new Date().toLocaleTimeString()}] Påbörjar sökning för ${watchConfig.date}...`);
         status = "Startar webbläsare...";
 
         browser = await puppeteer.launch({
@@ -40,6 +42,7 @@ async function checkTimes() {
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-gpu",
+                "--single-process" // Sparar RAM på Render
             ],
             defaultViewport: chromium.defaultViewport,
             executablePath: await chromium.executablePath(),
@@ -48,46 +51,59 @@ async function checkTimes() {
 
         const page = await browser.newPage();
         
-        // OPTIMERING: Blockera onödiga resurser för att spara RAM och tid
+        // OPTIMERING: Blockera tunga filer (bilder/CSS) så Render orkar med
         await page.setRequestInterception(true);
         page.on('request', (req) => {
-            const resourceType = req.resourceType();
-            if (['image', 'font', 'stylesheet', 'media'].includes(resourceType)) {
+            const type = req.resourceType();
+            if (['image', 'font', 'stylesheet', 'media'].includes(type)) {
                 req.abort();
             } else {
                 req.continue();
             }
         });
 
-        // Generös timeout för Renders långsamma processer
+        // Sätt en lång timeout (60 sek) för sega laddningstider
         page.setDefaultNavigationTimeout(60000);
 
-        // 1. Logga in
-        status = "Loggar in på Min Golf...";
+        // STEG 1: Logga in
+        status = "Laddar inloggning...";
         await page.goto("https://mingolf.golf.se/Login", { waitUntil: "domcontentloaded" });
 
-        await page.type("#LoginId", watchConfig.golfId);
-        await page.type("#Password", watchConfig.password);
+        // Vänta på att inloggningsfältet faktiskt dyker upp
+        await page.waitForSelector("#LoginId", { visible: true, timeout: 30000 });
+
+        status = "Fyller i uppgifter...";
+        await page.type("#LoginId", watchConfig.golfId, { delay: 50 });
+        await page.type("#Password", watchConfig.password, { delay: 50 });
         
+        status = "Skickar inloggning...";
         await Promise.all([
             page.click('button[type="submit"]'),
             page.waitForNavigation({ waitUntil: "networkidle2" }),
         ]);
 
-        // 2. Gå till bokningssidan
-        status = "Söker efter tider...";
-        // Tournament Course på Vasatorp
+        // Kontrollera om vi lyckades logga in genom att kolla URL
+        if (page.url().includes("Login")) {
+            throw new Error("Inloggning misslyckades - kontrollera Golf-ID/Lösenord!");
+        }
+
+        console.log("Inloggning godkänd!");
+        status = "Navigerar till Vasatorp...";
+
+        // STEG 2: Gå till bokningssidan (Tournament Course)
         const url = `https://mingolf.golf.se/bokning/0abbcc77-25a8-4167-83c7-bbf43d6e863c/${watchConfig.date}`;
         await page.goto(url, { waitUntil: "networkidle2" });
 
-        // 3. Leta efter tids-slots
+        // Vänta på att tabellen med tider laddas
+        status = "Läser av tider...";
         await page.waitForSelector('.booking-slot', { timeout: 30000 });
 
+        // STEG 3: Analysera tiderna
         const slots = await page.evaluate(() => {
             const items = Array.from(document.querySelectorAll('.booking-slot'));
             return items.map(item => {
                 const timeText = item.querySelector('.time')?.innerText || "";
-                // En tid är ledig om den inte har klassen 'occupied' eller 'disabled'
+                // En tid är ledig om den inte har 'occupied' eller 'disabled' klasser
                 const isAvailable = !item.classList.contains('occupied') && !item.classList.contains('disabled');
                 return { time: timeText, available: isAvailable };
             });
@@ -96,27 +112,27 @@ async function checkTimes() {
         const match = slots.find(s => s.available && s.time >= watchConfig.from && s.time <= watchConfig.to);
 
         if (match) {
-            console.log("MATCH FUNNEN:", match.time);
+            console.log("BOOM! Hittade tid:", match.time);
             await resend.emails.send({
                 from: "TeePilot <onboarding@resend.dev>",
                 to: [watchConfig.email],
                 subject: "TEE TIME HITTAD!",
-                html: `<h1>Tid hittad!</h1><p>En ledig tid kl <strong>${match.time}</strong> finns nu på Vasatorp!</p>`
+                html: `<h1>Tid hittad på Vasatorp!</h1><p>Det finns en ledig tid kl <strong>${match.time}</strong> den ${watchConfig.date}.</p><p>Gå till Min Golf och boka direkt!</p>`
             });
             stopJob();
-            status = `Hittad: ${match.time}. Mail skickat!`;
+            status = `Tid hittad: ${match.time}. Mail skickat!`;
         } else {
-            console.log("Inga lediga tider matchade intervallet.");
-            status = "Bevakning aktiv: Letar tider...";
+            console.log("Ingen ledig tid i intervallet ännu.");
+            status = "Bevakning aktiv: Letar vidare...";
         }
 
     } catch (err) {
-        console.error("Fel vid körning:", err.message);
-        status = "Väntar på nästa försök (Sidan segade ner)...";
+        console.error("Körningsfel:", err.message);
+        status = "Försöker igen om 3 min (Fel: " + err.message + ")";
     } finally {
         if (browser) {
             await browser.close();
-            console.log("Webbläsare stängd.");
+            console.log("Webbläsare stängd för att spara minne.");
         }
     }
 }
@@ -127,7 +143,7 @@ function stopJob() {
     status = "Ingen aktiv bevakning";
 }
 
-// ENDPOINTS
+// ENDPOINTS FÖR FRONTEND
 app.post("/start", (req, res) => {
     watchConfig = req.body;
     status = "Bevakning startad";
@@ -135,10 +151,10 @@ app.post("/start", (req, res) => {
     
     if (job) job.stop();
     
-    // Kör första gången direkt
+    // Kör första kollen direkt
     checkTimes();
     
-    // Kör var 3:e minut (för att inte överbelasta Render)
+    // Kör var 3:e minut (standard för att hålla Render vid liv utan krasch)
     job = cron.schedule("*/3 * * * *", checkTimes);
     res.sendStatus(200);
 });
@@ -154,4 +170,4 @@ app.get("/status", (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server kör på port ${PORT}`));
+app.listen(PORT, () => console.log(`Server körs på port ${PORT}`));
