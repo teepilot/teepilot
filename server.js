@@ -17,10 +17,20 @@ let status = "Ingen aktiv bevakning";
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
+// Funktion för att stoppa allt centralt
+function stopEverything(reason) {
+    if (job) {
+        job.stop();
+        job = null;
+    }
+    watchConfig = null;
+    status = `Avslutad: ${reason}`;
+    console.log(`BEVAKNING AVBRUTEN: ${reason}`);
+}
+
 async function checkTimes() {
-    // Om den redan körs, försök inte starta en till - det kraschar Render
     if (isRunning) {
-        console.log("Körning pågår redan, hoppar över denna gång...");
+        console.log("Körning pågår redan, hoppar över...");
         return;
     }
     
@@ -37,7 +47,6 @@ async function checkTimes() {
         });
 
         const page = await browser.newPage();
-        // Sätt en lång timeout för att hantera seg seg server
         await page.setDefaultNavigationTimeout(90000); 
         
         console.log("Navigerar till bokning...");
@@ -51,7 +60,7 @@ async function checkTimes() {
             await inputs[0].type(watchConfig.golfId);
             await inputs[1].type(watchConfig.password);
             await inputs[1].press("Enter");
-            await sleep(10000); // Ge sidan ordentligt med tid efter login
+            await sleep(10000);
         }
 
         // 2. COOKIES & STÄDNING
@@ -60,13 +69,11 @@ async function checkTimes() {
             const elements = Array.from(document.querySelectorAll('button, span, div'));
             const cookieBtn = elements.find(e => e.innerText.toLowerCase().includes('acceptera') || e.innerText.toLowerCase().includes('ok'));
             if (cookieBtn) cookieBtn.click();
-            
-            // Ta bort allt som kan täcka skärmen
             document.querySelectorAll('[class*="modal"], [id*="sp_message"]').forEach(el => el.remove());
         });
         await sleep(3000);
 
-        // 3. VÄLJ BANA (Dropdown)
+        // 3. VÄLJ BANA (Dropdown) - Här dör det ofta
         console.log("Letar efter ban-väljaren...");
         await page.waitForSelector('.v-select__slot', { timeout: 15000 });
         await page.click('.v-select__slot');
@@ -78,7 +85,7 @@ async function checkTimes() {
             if (target) target.click();
         });
 
-        // 4. VÄLJ DATUM (Kalender)
+        // 4. VÄLJ DATUM
         await sleep(3000);
         console.log("Öppnar kalender...");
         await page.evaluate(() => {
@@ -89,7 +96,6 @@ async function checkTimes() {
         
         await sleep(3000);
         const day = watchConfig.date.split("-")[2].replace(/^0+/, ''); 
-        console.log("Klickar på dag:", day);
         
         await page.evaluate((d) => {
             const btnContents = Array.from(document.querySelectorAll('.v-btn__content'));
@@ -97,7 +103,7 @@ async function checkTimes() {
             if (target) target.click();
         }, day);
         
-        await sleep(6000); // Vänta på att tidsschemat uppdateras
+        await sleep(6000);
 
         // 5. KOLLA LEDIGA TIDER
         const available = await page.evaluate(() => {
@@ -107,29 +113,25 @@ async function checkTimes() {
                 .map(txt => txt.match(/\d{2}:\d{2}/)[0]);
         });
 
-        console.log("Hittade tider:", available);
-
         const match = available.find(t => t >= watchConfig.from && t <= watchConfig.to);
 
         if (match) {
-            console.log("MATCH HITTAD!");
             await resend.emails.send({
                 from: "TeePilot <onboarding@resend.dev>",
                 to: watchConfig.email,
                 subject: "TeeTime hittad! ⛳",
-                html: `<p>En tid hittades: <b>${match}</b> på Vasatorp.</p>`
+                html: `<p>Tid hittad: <b>${match}</b></p>`
             });
-            status = `Tid hittad: ${match}`;
-            if (job) job.stop();
-            watchConfig = null;
+            stopEverything(`Tid hittad (${match})`);
         } else {
-            status = `Senaste koll: ${new Date().toLocaleTimeString()} (Inga tider)`;
+            status = `Senaste koll: ${new Date().toLocaleTimeString()} (Inga lediga tider)`;
         }
 
     } catch (err) {
-        console.log("FEL I KÖRNING:", err.message);
+        console.log("KRITISKT FEL:", err.message);
+        // 🔥 Här avslutas bevakningen helt om ett fel uppstår (t.ex. timeout för v-select__slot)
+        stopEverything(`Fel vid sökning: ${err.message}`);
     } finally {
-        // VIKTIGT: Stäng ALLTID webbläsaren för att frigöra RAM på Render
         if (browser) {
             console.log("Stänger webbläsare...");
             await browser.close().catch(() => {});
@@ -138,31 +140,20 @@ async function checkTimes() {
     }
 }
 
-// Starta bevakning
 app.post("/start", (req, res) => {
     watchConfig = req.body;
-    status = "Bevakning startad";
-    console.log("Startar ny bevakning för:", watchConfig.golfId);
-
+    status = "Bevakning aktiv";
     if (job) job.stop();
-    
-    // Nollställ isRunning ifall något hängde sig
     isRunning = false; 
-    
     checkTimes(); 
     job = cron.schedule("*/5 * * * *", checkTimes);
     res.sendStatus(200);
 });
 
 app.post("/stop", (req, res) => {
-    if (job) job.stop();
-    watchConfig = null;
-    status = "Stoppad";
-    isRunning = false;
+    stopEverything("Stoppad manuellt");
     res.sendStatus(200);
 });
 
 app.get("/status", (req, res) => res.json({ status }));
-app.get("/", (req, res) => res.send("TeePilot Online"));
-
 app.listen(process.env.PORT || 3000);
