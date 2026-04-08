@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "Tee time watcher for MinGolf",
   "main": "server.js",
-  "type": "commonjs",
   "scripts": {
     "start": "node server.js"
   },
@@ -11,11 +10,11 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@sparticuz/chromium": "^123.0.0",
+    "@sparticuz/chromium": "123.0.1",
     "cors": "^2.8.5",
-    "express": "^5.0.0",
-    "node-cron": "^4.2.1",
-    "puppeteer-core": "^24.40.0",
-    "resend": "^6.9.4"
+    "express": "^4.19.2",
+    "node-cron": "^3.0.3",
+    "puppeteer-core": "22.6.0",
+    "resend": "^3.2.0"
   }
 }
