@@ -21,7 +21,7 @@ function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// 🔥 klicka element via text (robust)
+// 🔥 ROBUST CLICK (FIXAD)
 async function clickByText(page, match) {
     const elements = await page.$$("div, button, span");
 
@@ -30,8 +30,20 @@ async function clickByText(page, match) {
         if (!text) continue;
 
         if (text.toLowerCase().includes(match.toLowerCase())) {
-            await el.click();
-            return true;
+
+            console.log("Clicking:", text);
+
+            try {
+                await el.evaluate(e => e.scrollIntoView());
+                await sleep(500);
+
+                // 🔥 FORCE CLICK (fixar ditt fel)
+                await page.evaluate(e => e.click(), el);
+
+                return true;
+            } catch (err) {
+                console.log("Click failed, trying next...");
+            }
         }
     }
     return false;
@@ -68,21 +80,21 @@ async function checkTimes() {
     let browser;
 
     try {
+
         browser = await puppeteer.launch({
             args: [
-              ...chromium.args,
-              "--no-sandbox",
-              "--disable-setuid-sandbox"
+                ...chromium.args,
+                "--no-sandbox",
+                "--disable-setuid-sandbox"
             ],
             executablePath: await chromium.executablePath(),
             headless: true
-          });
+        });
 
         const page = await browser.newPage();
-
         await page.setDefaultTimeout(60000);
 
-        // 🔥 GÅ DIREKT TILL BOOKING (fixar login-problemet)
+        // 🔥 GÅ DIREKT TILL BOOKING
         console.log("Opening booking page...");
         await page.goto("https://mingolf.golf.se/bokning/#/", {
             waitUntil: "domcontentloaded"
@@ -90,7 +102,7 @@ async function checkTimes() {
 
         await sleep(5000);
 
-        // 🔥 LOGIN (robust)
+        // 🔥 LOGIN ROBUST
         console.log("Checking login...");
         const inputs = await page.$$("input");
 
@@ -112,12 +124,18 @@ async function checkTimes() {
 
         await sleep(8000);
 
-        // COOKIE
+        // 🔥 COOKIE
         console.log("Handling cookies...");
         await clickByText(page, "acceptera");
         await sleep(2000);
 
-        // 🔥 ÖPPNA KLUBB + BANA (RÄTT ELEMENT)
+        // 🔥 TA BORT OVERLAYS (VIKTIGT)
+        await page.evaluate(() => {
+            document.querySelectorAll("[role='dialog'], .modal, .overlay")
+                .forEach(el => el.remove());
+        });
+
+        // 🔥 ÖPPNA KLUBB + BANA
         console.log("Opening club/bana...");
         const opened = await clickByText(page, "klubb och bana");
 
