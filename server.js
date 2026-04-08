@@ -13,44 +13,49 @@ let watchConfig = null;
 let status = "Ingen aktiv bevakning";
 
 app.get("/", (req, res) => {
-    res.send("<h1>TeePilot API v2</h1><p>Status: " + status + "</p>");
+    res.send("<h1>TeePilot API v3</h1><p>Status: " + status + "</p>");
 });
 
 async function checkTimes() {
     if (!watchConfig) return;
 
     try {
-        console.log(`[${new Date().toLocaleTimeString()}] Försöker logga in...`);
+        console.log(`[${new Date().toLocaleTimeString()}] Loggar in på Min Golf...`);
         
-        // 1. LOGGA IN (Nya korrekta URL-vägen)
-        const loginRes = await fetch("https://mingolf.golf.se/api/session/login", {
+        // 1. LOGGA IN (Den nya Identity-vägen)
+        const loginRes = await fetch("https://mingolf.golf.se/api/v1/auth/login", {
             method: "POST",
             headers: {
                 "content-type": "application/json",
                 "accept": "application/json",
-                "origin": "https://mingolf.golf.se",
-                "referer": "https://mingolf.golf.se/Login",
                 "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
             },
             body: JSON.stringify({
-                loginId: watchConfig.golfId, // Notera: loginId istället för username
-                password: watchConfig.password,
-                rememberMe: false
+                username: watchConfig.golfId,
+                password: watchConfig.password
             })
         });
 
         if (!loginRes.ok) {
-            throw new Error(`Inloggning nekad (Status: ${loginRes.status})`);
+            // Om v1 inte funkar, testar vi den gamla vägen automatiskt som backup i samma anrop
+            const backupRes = await fetch("https://mingolf.golf.se/api/login", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ username: watchConfig.golfId, password: watchConfig.password })
+            });
+            if (!backupRes.ok) throw new Error(`Inloggning misslyckades (${loginRes.status})`);
+            var finalRes = backupRes;
+        } else {
+            var finalRes = loginRes;
         }
         
-        // Hämta session-cookien (Viktigt!)
-        const setCookie = loginRes.headers.get("set-cookie");
-        if (!setCookie) throw new Error("Fick ingen session från Min Golf");
+        const setCookie = finalRes.headers.get("set-cookie");
+        if (!setCookie) throw new Error("Fick ingen session (cookie saknas)");
 
-        console.log("Inloggning lyckades! Letar tider...");
+        console.log("Inloggning lyckades! Söker tider på Vasatorp...");
 
-        // 2. HÄMTA TIDERNA
-        const response = await fetch("https://mingolf.golf.se/api/booking/get-slots", {
+        // 2. HÄMTA TIDERNA (Tournament Course ID: 0abbcc77-25a8-4167-83c7-bbf43d6e863c)
+        const response = await fetch("https://mingolf.golf.se/api/v1/booking/slots", {
             method: "POST",
             headers: {
                 "content-type": "application/json",
@@ -58,7 +63,6 @@ async function checkTimes() {
                 "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
             },
             body: JSON.stringify({
-                clubId: "f2cb0f19-558d-4029-8dc6-0d3340c6eb1a",
                 courseId: "0abbcc77-25a8-4167-83c7-bbf43d6e863c",
                 date: watchConfig.date
             })
@@ -66,37 +70,35 @@ async function checkTimes() {
 
         const data = await response.json();
         
-        if (!data.slots || !Array.isArray(data.slots)) {
-            console.log("Inga tider tillgängliga.");
-            return;
-        }
+        // Hantera olika format på API-svaret
+        const slots = data.slots || data.items || [];
 
-        const availableSlots = data.slots.filter(slot => {
-            // Min Golf API returnerar oftast tid som "08:10" eller full ISO sträng
+        const availableSlots = slots.filter(slot => {
             const slotTime = slot.time.includes("T") ? slot.time.split("T")[1].substring(0, 5) : slot.time;
-            return slotTime >= watchConfig.from && 
-                   slotTime <= watchConfig.to && 
-                   slot.isBookable;
+            const isBookable = slot.isBookable || (slot.availability && slot.availability.bookable);
+            return slotTime >= watchConfig.from && slotTime <= watchConfig.to && isBookable;
         });
 
         if (availableSlots.length > 0) {
-            const foundTime = availableSlots[0].time;
+            const foundTime = availableSlots[0].time.includes("T") ? availableSlots[0].time.split("T")[1].substring(0, 5) : availableSlots[0].time;
             console.log("HITTADE TID:", foundTime);
+            
             await resend.emails.send({
                 from: "TeePilot <onboarding@resend.dev>",
                 to: [watchConfig.email],
                 subject: "TEE TIME HITTAD!",
-                html: `<h1>Tid hittad: ${foundTime}</h1><p>Boka nu!</p>`
+                html: `<h2>En ledig tid kl ${foundTime} hittades!</h2><p>Datum: ${watchConfig.date}</p><p><a href="https://mingolf.golf.se/bokning">Gå till Min Golf</a></p>`
             });
+            
             stopJob();
-            status = `Hittad: ${foundTime}. Bevakning avslutad.`;
+            status = `Klar! Hittade ${foundTime}`;
         } else {
-            status = "Bevakning aktiv: Söker...";
+            status = "Bevakning aktiv: Inga lediga tider än...";
         }
 
     } catch (err) {
         console.error("Fel:", err.message);
-        status = "Fel: " + err.message;
+        status = "Väntar på nästa försök: " + err.message;
     }
 }
 
