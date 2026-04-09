@@ -14,16 +14,32 @@ let job = null;
 let watchConfig = null;
 let status = "Ingen aktiv bevakning";
 
-app.get("/", (req, res) => res.send(`<h1>TeePilot Active</h1><p>Status: ${status}</p>`));
+app.get("/", (req, res) => {
+    res.send(`
+        <div style="font-family: sans-serif; text-align: center; padding: 50px;">
+            <h1>⛳ TeePilot Server Status</h1>
+            <p>Status: <strong>${status}</strong></p>
+            ${watchConfig ? `<p>Bevakar: ${watchConfig.date} (${watchConfig.from}-${watchConfig.to})</p>` : ''}
+        </div>
+    `);
+});
 
 async function checkTimes() {
     if (!watchConfig) return;
     let browser = null;
 
     try {
-        console.log("Startar sökning...");
+        console.log(`--- [${new Date().toLocaleTimeString()}] Startar ny söksekvens ---`);
+        status = "Startar webbläsare...";
+        
         browser = await puppeteer.launch({
-            args: [...chromium.args, "--disable-blink-features=AutomationControlled"],
+            args: [
+                ...chromium.args, 
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-setuid-sandbox"
+            ],
+            defaultViewport: chromium.defaultViewport,
             executablePath: await chromium.executablePath(),
             headless: chromium.headless,
         });
@@ -32,25 +48,25 @@ async function checkTimes() {
         await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
         page.setDefaultNavigationTimeout(60000);
 
-        // 1. Gå till Min Golf
+        // 1. GÅ TILL LOGIN
+        console.log("[STEP 1] Navigerar till inloggningssidan...");
         await page.goto("https://mingolf.golf.se/Login", { waitUntil: "networkidle2" });
 
-        // 🍪 COOKIE-FIX: Vänta på och klicka bort cookie-bannern om den finns
+        // Hantera Cookies
         try {
             const cookieBtn = "#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll";
             await page.waitForSelector(cookieBtn, { timeout: 5000 });
             await page.click(cookieBtn);
-            console.log("Cookies accepterade");
-            await new Promise(r => setTimeout(r, 2000)); // Vänta på att bannern försvinner
+            console.log("[LOG] Cookie-banner bortklickad.");
+            await new Promise(r => setTimeout(r, 1000));
         } catch (e) {
-            console.log("Ingen cookie-banner hittad, går vidare.");
+            console.log("[LOG] Ingen cookie-banner dök upp.");
         }
 
-        // 🔍 LOGIN-FIX: Hitta fälten via typ istället för ID
-        status = "Loggar in...";
-        await page.waitForSelector("input[type='password']", { timeout: 10000 });
+        // Identifiera fält och skriv in uppgifter
+        console.log("[STEP 2] Identifierar inloggningsfält...");
+        await page.waitForSelector("input[type='password']", { timeout: 15000 });
         
-        // Vi letar efter alla inputs och mappar dem
         const inputs = await page.$$("input");
         for (const input of inputs) {
             const type = await page.evaluate(el => el.type, input);
@@ -58,64 +74,100 @@ async function checkTimes() {
             if (type === "password") await input.type(watchConfig.password);
         }
 
+        console.log("[STEP 3] Klickar på Logga in...");
         await Promise.all([
             page.keyboard.press('Enter'),
-            page.waitForNavigation({ waitUntil: "networkidle2" }).catch(() => {})
+            page.waitForNavigation({ waitUntil: "networkidle2" }).catch(() => console.log("Navigering tog tid, fortsätter ändå..."))
         ]);
 
-        // ⛳ BOKNING: Gå direkt till banan för att spara tid/minne
-        status = "Letar tider...";
-        await page.goto(`https://mingolf.golf.se/bokning/0abbcc77-25a8-4167-83c7-bbf43d6e863c/${watchConfig.date}`, { waitUntil: "networkidle2" });
+        // VERIFIERA INLOGGNING
+        const currentUrl = page.url();
+        if (currentUrl.includes("Login")) {
+            console.error("[ERROR] Inloggning misslyckades. Fortfarande kvar på login-sidan.");
+            throw new Error("Inloggning nekad (fel uppgifter?)");
+        } else {
+            console.log("[SUCCESS] Inloggning genomförd! Nuvarande URL:", currentUrl);
+        }
 
-        // Hämta alla tids-knappar
+        // 2. GÅ TILL BOKNINGEN
+        const bookingUrl = `https://mingolf.golf.se/bokning/0abbcc77-25a8-4167-83c7-bbf43d6e863c/${watchConfig.date}`;
+        console.log(`[STEP 4] Navigerar till bokningssidan: ${bookingUrl}`);
+        status = "Letar tider...";
+        
+        await page.goto(bookingUrl, { waitUntil: "networkidle2" });
+
+        // Vänta på tiderna
+        console.log("[STEP 5] Väntar på att tidsschemat ska renderas...");
+        await page.waitForSelector("button", { timeout: 20000 });
+        await new Promise(r => setTimeout(r, 3000)); // Ge sidan tid att rita ut alla knappar
+
         const times = await page.evaluate(() => {
             return Array.from(document.querySelectorAll("button"))
-                .map(el => el.innerText)
-                .filter(text => text.match(/\d{2}:\d{2}/));
+                .map(el => el.innerText.trim())
+                .filter(text => text.match(/^\d{2}:\d{2}$/));
         });
 
-        console.log("Hittade tider:", times);
+        if (times.length > 0) {
+            console.log(`[INFO] Hittade totalt ${times.length} bokningsbara tider på sidan.`);
+            console.log("Alla hittade tider:", times.join(", "));
+        } else {
+            console.log("[WARN] Inga tid-knappar hittades på sidan. Sidan kan vara tom.");
+        }
+        
         const available = times.find(t => t >= watchConfig.from && t <= watchConfig.to);
 
         if (available) {
-            console.log("BINGO! Tid hittad:", available);
+            console.log(`[MATCH] BINGO! Hittade en tid kl ${available} inom intervallet.`);
             await resend.emails.send({
                 from: "TeePilot <onboarding@resend.dev>",
                 to: [watchConfig.email],
                 subject: "TeeTime hittad ⛳!",
-                html: `<h2>Tid hittad: ${available}</h2><p>Boka snabbt på Min Golf!</p>`
+                html: `<h2>Tid hittad: ${available}</h2><p>Datum: ${watchConfig.date}</p><p>Skynda dig in och boka på Min Golf!</p>`
             });
-            status = `Hittad: ${available}`;
-            if (job) job.stop();
-            watchConfig = null;
+            console.log("[LOG] E-post skickad till:", watchConfig.email);
+            status = `Hittad: ${available}. Bevakning avslutad.`;
+            stopJob();
         } else {
-            status = "Söker... (Ingen ledig än)";
+            console.log(`[INFO] Ingen tid matchade intervallet ${watchConfig.from}-${watchConfig.to}.`);
+            status = `Senaste sökning: ${new Date().toLocaleTimeString()} (Inga lediga än)`;
         }
 
     } catch (err) {
-        console.error("Fel:", err.message);
-        status = "Försök misslyckades...";
+        console.error(`[CRITICAL ERROR] ${err.message}`);
+        status = "Fel vid körning: " + err.message;
     } finally {
-        if (browser) await browser.close();
+        if (browser) {
+            await browser.close();
+            console.log("[STEP 6] Webbläsare stängd.");
+            console.log("-----------------------------------------------");
+        }
     }
+}
+
+function stopJob() {
+    if (job) job.stop();
+    watchConfig = null;
 }
 
 app.post("/start", (req, res) => {
     watchConfig = req.body;
-    status = "Bevakning aktiv";
+    status = "Bevakning startad";
+    console.log("Startar bevakning för:", watchConfig.golfId);
+    
     if (job) job.stop();
-    checkTimes();
-    job = cron.schedule("*/5 * * * *", checkTimes);
+    checkTimes(); // Kör direkt en gång
+    job = cron.schedule("*/5 * * * *", checkTimes); // Kör var 5:e minut
     res.sendStatus(200);
 });
 
 app.post("/stop", (req, res) => {
-    if (job) job.stop();
-    watchConfig = null;
-    status = "Stoppad";
+    stopJob();
+    status = "Ingen aktiv bevakning";
+    console.log("Bevakning stoppad manuellt.");
     res.sendStatus(200);
 });
 
 app.get("/status", (req, res) => res.json({ status }));
 
-app.listen(process.env.PORT || 3000, () => console.log("Server redo!"));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server körs på port ${PORT}`));
