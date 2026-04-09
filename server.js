@@ -24,8 +24,8 @@ async function checkTimes() {
 
     let browser = null;
     try {
-        console.log(`[${new Date().toLocaleTimeString()}] Kollar tider för ${watchConfig.golfId}...`);
-        status = "Startar sökning...";
+        console.log(`[${new Date().toLocaleTimeString()}] Startar sökning för ${watchConfig.golfId}...`);
+        status = "Öppnar webbläsare...";
 
         browser = await puppeteer.launch({
             args: [...chromium.args, "--disable-gpu", "--disable-dev-shm-usage", "--single-process"],
@@ -36,37 +36,43 @@ async function checkTimes() {
 
         const page = await browser.newPage();
         
-        // Optimering: Skippa tunga bilder
         await page.setRequestInterception(true);
         page.on('request', (req) => {
             if (['image', 'font', 'media'].includes(req.resourceType())) req.abort();
             else req.continue();
         });
 
-        page.setDefaultNavigationTimeout(60000);
+        page.setDefaultNavigationTimeout(90000);
 
-        // 1. Gå till Min Golf och logga in (Använder dina gamla fungerande ID:n!)
-        await page.goto("https://mingolf.golf.se/", { waitUntil: "domcontentloaded" });
+        // 1. Gå direkt till inloggningssidan istället för roten
+        status = "Laddar inloggning...";
+        await page.goto("https://mingolf.golf.se/Login", { waitUntil: "networkidle2" });
+
+        // Försök hitta antingen #username eller vänta lite extra
+        try {
+            await page.waitForSelector("#username", { visible: true, timeout: 45000 });
+        } catch (e) {
+            console.log("Hittade inte #username direkt, testar att ladda om...");
+            await page.reload({ waitUntil: "networkidle2" });
+            await page.waitForSelector("#username", { visible: true, timeout: 30000 });
+        }
         
-        // Vänta på #username (från din gamla kod)
-        await page.waitForSelector("#username", { timeout: 30000 });
-        
-        await page.type("#username", watchConfig.golfId);
-        await page.type("#password", watchConfig.password);
+        status = "Fyller i uppgifter...";
+        await page.type("#username", watchConfig.golfId, { delay: 50 });
+        await page.type("#password", watchConfig.password, { delay: 50 });
         
         await Promise.all([
             page.click("button[type='submit']"),
             page.waitForNavigation({ waitUntil: "networkidle2" })
         ]);
 
-        console.log("Inloggad!");
-
-        // 2. Gå direkt till Vasatorps Tournament Course (Här använder vi direkt-länken för att spara RAM)
+        // 2. Gå till bokningen
+        status = "Letar tider...";
         const bookingUrl = `https://mingolf.golf.se/bokning/0abbcc77-25a8-4167-83c7-bbf43d6e863c/${watchConfig.date}`;
         await page.goto(bookingUrl, { waitUntil: "networkidle2" });
 
-        // Vänta på knapparna (tiderna)
-        await page.waitForSelector("button", { timeout: 20000 });
+        // Vänta på att knapparna med tider laddas
+        await page.waitForSelector("button", { timeout: 30000 });
 
         const times = await page.evaluate(() => {
             return Array.from(document.querySelectorAll("button"))
@@ -74,22 +80,18 @@ async function checkTimes() {
                 .filter(text => text.match(/\d{2}:\d{2}/));
         });
 
-        console.log("Hittade tider:", times);
-
+        console.log("Tider funna:", times);
         const available = times.filter(t => t >= watchConfig.from && t <= watchConfig.to);
 
         if (available.length > 0) {
             const time = available[0];
-            console.log("TEE TIME FOUND:", time);
-
             await resend.emails.send({
                 from: "TeePilot <onboarding@resend.dev>",
                 to: [watchConfig.email],
                 subject: "TeeTime hittad ⛳!",
-                html: `<h2>Tid hittad!</h2><p>Tid: ${time} den ${watchConfig.date}</p>`
+                html: `<h2>Tid hittad: ${time}</h2><p>Datum: ${watchConfig.date}</p>`
             });
-
-            status = `Hittad: ${time}. Mail skickat!`;
+            status = `Träff! ${time} mailat.`;
             if (job) job.stop();
             watchConfig = null;
         } else {
@@ -98,9 +100,10 @@ async function checkTimes() {
 
     } catch (err) {
         console.error("Fel:", err.message);
-        status = "Väntar på nästa försök...";
+        status = "Försök misslyckades, väntar på nästa...";
     } finally {
         if (browser) await browser.close();
+        console.log("Webbläsare stängd.");
     }
 }
 
