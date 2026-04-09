@@ -35,19 +35,29 @@ async function checkTimes() {
         });
 
         const page = await activeBrowser.newPage();
+        
+        // --- OPTIMERING: Blockera bilder och CSS för att snabba upp laddningen ---
+        await page.setRequestInterception(true);
+        page.on('request', (req) => {
+            if (['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())) {
+                req.abort();
+            } else {
+                req.continue();
+            }
+        });
+
         await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
         
-        await page.goto("https://mingolf.golf.se/Login", { waitUntil: "networkidle2" });
+        // Öka timeout till 60 sekunder för sega servrar
+        page.setDefaultNavigationTimeout(60000);
 
-        // Cookie-hantering
-        try {
-            await page.waitForSelector("#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll", { timeout: 5000 });
-            await page.click("#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll");
-            await new Promise(r => setTimeout(r, 1000));
-        } catch (e) {}
+        console.log("[LOG] Navigerar till Login...");
+        await page.goto("https://mingolf.golf.se/Login", { waitUntil: "domcontentloaded" });
 
-        // Logga in
-        await page.waitForSelector("input[type='password']", { timeout: 15000 });
+        // Vänta på lösenordsfältet (istället för hela sidan)
+        console.log("[LOG] Väntar på inmatningsfält...");
+        await page.waitForSelector("input[type='password']", { timeout: 40000 });
+
         const inputs = await page.$$("input");
         for (const input of inputs) {
             const type = await page.evaluate(el => el.type, input);
@@ -55,17 +65,18 @@ async function checkTimes() {
             if (type === "password") await input.type(watchConfig.password);
         }
 
+        console.log("[LOG] Skickar inloggning...");
         await Promise.all([
             page.keyboard.press('Enter'),
-            page.waitForNavigation({ waitUntil: "networkidle2" }).catch(() => {})
+            page.waitForNavigation({ waitUntil: "networkidle2" }).catch(() => console.log("Navigering tog tid, men fortsätter..."))
         ]);
 
-        // Gå till bokning
         const bookingUrl = `https://mingolf.golf.se/bokning/0abbcc77-25a8-4167-83c7-bbf43d6e863c/${watchConfig.date}`;
-        await page.goto(bookingUrl, { waitUntil: "networkidle2" });
+        console.log("[LOG] Går till bokningssida...");
+        await page.goto(bookingUrl, { waitUntil: "domcontentloaded" });
 
-        await page.waitForSelector("button", { timeout: 20000 });
-        await new Promise(r => setTimeout(r, 3000));
+        await page.waitForSelector("button", { timeout: 30000 });
+        await new Promise(r => setTimeout(r, 2000));
 
         const times = await page.evaluate(() => {
             return Array.from(document.querySelectorAll("button"))
@@ -73,7 +84,7 @@ async function checkTimes() {
                 .filter(text => text.match(/^\d{2}:\d{2}$/));
         });
 
-        console.log("[INFO] Hittade tider:", times.join(", "));
+        console.log("[INFO] Tider funna:", times.join(", "));
         const available = times.find(t => t >= watchConfig.from && t <= watchConfig.to);
 
         if (available) {
@@ -83,16 +94,15 @@ async function checkTimes() {
                 subject: "TeeTime hittad ⛳!",
                 html: `<h2>Tid hittad: ${available}</h2>`
             });
-            console.log("[MATCH] Mail skickat!");
             status = `Träff! Tid: ${available}`;
-            stopEverything(); // Stoppar allt när tid hittats
+            stopEverything();
         } else {
             status = `Senaste koll: ${new Date().toLocaleTimeString()} (Inga lediga)`;
         }
 
     } catch (err) {
         console.error(`[ERROR] ${err.message}`);
-        if (watchConfig) status = "Väntar på nästa försök...";
+        status = "Timeout/Fel vid sökning, försöker igen snart...";
     } finally {
         if (activeBrowser) {
             await activeBrowser.close();
