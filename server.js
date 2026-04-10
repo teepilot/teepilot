@@ -23,7 +23,7 @@ async function checkTimes() {
     isSearching = true;
 
     try {
-        console.log(`--- [${new Date().toLocaleTimeString()}] Startar söksekvens ---`);
+        console.log(`--- [${new Date().toLocaleTimeString()}] Startar sökning ---`);
         status = "Sökning pågår...";
 
         activeBrowser = await puppeteer.launch({
@@ -36,116 +36,72 @@ async function checkTimes() {
         await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
         page.setDefaultNavigationTimeout(60000);
 
-        // 1. NAVIGERA TILL LOGIN
-        console.log("[STEP 1] Navigerar till Login...");
+        // 1. LOGIN (Exakt som din fungerande logg)
+        console.log("[LOG] Navigerar till Login...");
         await page.goto("https://mingolf.golf.se/Login", { waitUntil: "domcontentloaded" });
 
-        // Hantera cookies om de dyker upp
-        try {
-            await page.waitForSelector("#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll", { timeout: 5000 });
-            await page.click("#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll");
-            console.log("[LOG] Cookies accepterade.");
-        } catch (e) {
-            console.log("[LOG] Ingen cookie-banner.");
+        console.log("[LOG] Väntar på inmatningsfält...");
+        await page.waitForSelector("input[type='password']", { timeout: 40000 });
+
+        const inputs = await page.$$("input");
+        for (const input of inputs) {
+            const type = await page.evaluate(el => el.type, input);
+            if (type === "text" || type === "email") await input.type(watchConfig.golfId);
+            if (type === "password") await input.type(watchConfig.password);
         }
 
-        // 2. DEN ROBUSTA INLOGGNINGSMETODEN (Letar efter alla inputs)
-        console.log("[STEP 2] Identifierar inloggningsfält...");
-        await new Promise(r => setTimeout(r, 3000)); // Vänta lite extra för säkerhets skull
-        
-        const inputsFilled = await page.evaluate((config) => {
-            const allInputs = Array.from(document.querySelectorAll("input"));
-            let userFilled = false;
-            let passFilled = false;
+        console.log("[LOG] Skickar inloggning...");
+        await Promise.all([
+            page.keyboard.press('Enter'),
+            page.waitForNavigation({ waitUntil: "networkidle2" }).catch(() => console.log("Navigering tog tid, men fortsätter..."))
+        ]);
 
-            allInputs.forEach(input => {
-                const type = input.type.toLowerCase();
-                const name = (input.name || "").toLowerCase();
-                const id = (input.id || "").toLowerCase();
-
-                // Identifiera användarnamn (text, email eller specifika namn)
-                if (!userFilled && (type === "text" || type === "email" || name.includes("user") || id.includes("user"))) {
-                    input.value = config.golfId;
-                    userFilled = true;
-                }
-                // Identifiera lösenord
-                else if (!passFilled && type === "password") {
-                    input.value = config.password;
-                    passFilled = true;
-                }
-            });
-            return userFilled && passFilled;
-        }, watchConfig);
-
-        if (inputsFilled) {
-            console.log("[LOG] Fyllt i uppgifter via bred skanning.");
-            await Promise.all([
-                page.keyboard.press('Enter'),
-                page.waitForNavigation({ waitUntil: "networkidle2" }).catch(() => {})
-            ]);
-        } else {
-            throw new Error("Kunde inte hitta inloggningsfälten.");
-        }
-
-        // 3. NAVIGERA TILL BOKNING
-        console.log("[STEP 3] Går till bokningssidan...");
+        // 2. GÅ TILL BOKNINGSSIDAN
+        console.log("[LOG] Går till bokningssida...");
         await page.goto("https://mingolf.golf.se/bokning/#/", { waitUntil: "networkidle2" });
+        
+        // Vänta på att Vasatorp-vyn laddas
         await new Promise(r => setTimeout(r, 5000)); 
 
-        // 4. VÄLJ TOURNAMENT COURSE (Klickar baserat på text)
-        console.log("[STEP 4] Väljer Tournament Course...");
-        const clickResult = await page.evaluate(() => {
-            const elements = Array.from(document.querySelectorAll("div, span, p, button, li, a"));
-            const target = elements.find(el => el.innerText && el.innerText.trim() === "Tournament Course");
-            if (target) {
-                target.click();
-                return "KLICKAD";
-            }
-            // Om exakt match misslyckas, prova "includes"
-            const fallback = elements.find(el => el.innerText && el.innerText.includes("Tournament Course"));
-            if (fallback) {
-                fallback.click();
-                return "KLICKAD (FALLBACK)";
-            }
-            return "HITTADES EJ";
+        // 3. VÄLJ BANA (Här väljer vi Tournament Course)
+        console.log("[LOG] Väljer Tournament Course...");
+        await page.evaluate(() => {
+            const el = Array.from(document.querySelectorAll("div, span, button, p"))
+                      .find(e => e.innerText && e.innerText.includes("Tournament Course"));
+            if (el) el.click();
         });
+        
+        // Ge tiderna tid att laddas efter klicket
+        await new Promise(r => setTimeout(r, 4000));
 
-        console.log(`[LOG] Banval-status: ${clickResult}`);
-        await new Promise(r => setTimeout(r, 4000)); // Vänta på att tiderna ritas ut
-
-        // 5. SKANNA TIDER
-        console.log("[STEP 5] Skannar tidsknappar...");
+        // 4. LÄS AV TIDERNA
         const times = await page.evaluate(() => {
             return Array.from(document.querySelectorAll("button"))
                 .map(el => el.innerText.trim())
                 .filter(text => text.match(/^\d{2}:\d{2}$/));
         });
 
-        if (times.length > 0) {
-            console.log(`[INFO] Hittade tider: ${times.join(", ")}`);
-            const available = times.find(t => t >= watchConfig.from && t <= watchConfig.to);
+        console.log("[INFO] Tider funna:", times.join(", "));
+        
+        const available = times.find(t => t >= watchConfig.from && t <= watchConfig.to);
 
-            if (available) {
-                console.log(`[MATCH] BINGO! Skickar mail för ${available}`);
-                await resend.emails.send({
-                    from: "TeePilot <onboarding@resend.dev>",
-                    to: [watchConfig.email],
-                    subject: "TeeTime hittad ⛳!",
-                    html: `<h2>Tid hittad: ${available}</h2><p>Datum: ${watchConfig.date}</p>`
-                });
-                status = `Träff! Tid: ${available}`;
-                await stopEverything();
-            } else {
-                status = `Sökt ${new Date().toLocaleTimeString()} (Ingen ledig än)`;
-            }
+        if (available) {
+            console.log("[MATCH] Skickar mail...");
+            await resend.emails.send({
+                from: "TeePilot <onboarding@resend.dev>",
+                to: [watchConfig.email],
+                subject: "TeeTime hittad ⛳!",
+                html: `<h2>Tid hittad: ${available}</h2><p>Bana: Tournament Course</p><p>Datum: ${watchConfig.date}</p>`
+            });
+            status = `Hittad: ${available}`;
+            stopEverything();
         } else {
-            console.log("[WARN] Inga tidsknappar hittades på sidan.");
-            status = "Kunde inte hitta tider (Väntar på nästa försök)";
+            status = `Sökt kl ${new Date().toLocaleTimeString()} (Inga lediga i intervallet)`;
         }
 
     } catch (err) {
-        console.error(`[CRITICAL ERROR] ${err.message}`);
-        status = "Fel vid sökning: " + err.message;
+        console.error(`[ERROR] ${err.message}`);
+        status = "Fel vid sökning...";
     } finally {
         if (activeBrowser) {
             await activeBrowser.close();
@@ -157,6 +113,7 @@ async function checkTimes() {
 }
 
 async function stopEverything() {
+    console.log("Stoppar all bevakning och stänger webbläsare...");
     if (job) { job.stop(); job = null; }
     watchConfig = null;
     status = "Ingen aktiv bevakning";
@@ -171,6 +128,7 @@ app.post("/start", async (req, res) => {
     await stopEverything();
     watchConfig = req.body;
     status = "Bevakning startad";
+    console.log("Startar bevakning för:", watchConfig.golfId);
     checkTimes();
     job = cron.schedule("*/5 * * * *", checkTimes);
     res.sendStatus(200);
@@ -183,4 +141,5 @@ app.post("/stop", async (req, res) => {
 
 app.get("/status", (req, res) => res.json({ status }));
 
-app.listen(process.env.PORT || 3000, () => console.log("Server online!"));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server redo på port ${PORT}`));
