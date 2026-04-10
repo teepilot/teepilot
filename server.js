@@ -36,26 +36,21 @@ async function checkTimes() {
 
         const page = await activeBrowser.newPage();
         
-        // --- OPTIMERING: Blockera bilder och CSS för att snabba upp laddningen ---
+        // Blockera onödiga resurser för snabbhet
         await page.setRequestInterception(true);
         page.on('request', (req) => {
-            if (['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())) {
-                req.abort();
-            } else {
-                req.continue();
-            }
+            if (['image', 'font', 'media'].includes(req.resourceType())) req.abort();
+            else req.continue();
         });
 
         await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-        
-        // Öka timeout till 60 sekunder för sega servrar
         page.setDefaultNavigationTimeout(60000);
 
+        // 1. LOGIN
         console.log("[LOG] Navigerar till Login...");
         await page.goto("https://mingolf.golf.se/Login", { waitUntil: "domcontentloaded" });
 
-        // Vänta på lösenordsfältet (istället för hela sidan)
-        console.log("[LOG] Väntar på inmatningsfält...");
+        console.log("[LOG] Fyller i uppgifter...");
         await page.waitForSelector("input[type='password']", { timeout: 40000 });
 
         const inputs = await page.$$("input");
@@ -65,44 +60,66 @@ async function checkTimes() {
             if (type === "password") await input.type(watchConfig.password);
         }
 
-        console.log("[LOG] Skickar inloggning...");
         await Promise.all([
             page.keyboard.press('Enter'),
-            page.waitForNavigation({ waitUntil: "networkidle2" }).catch(() => console.log("Navigering tog tid, men fortsätter..."))
+            page.waitForNavigation({ waitUntil: "networkidle2" }).catch(() => {})
         ]);
 
+        // 2. BOKNINGSSIDA
+        // Vi använder din direktlänk som sätter både bana och datum automatiskt
         const bookingUrl = `https://mingolf.golf.se/bokning/0abbcc77-25a8-4167-83c7-bbf43d6e863c/${watchConfig.date}`;
-        console.log("[LOG] Går till bokningssida...");
-        await page.goto(bookingUrl, { waitUntil: "domcontentloaded" });
+        console.log(`[LOG] Går direkt till bana & datum: ${bookingUrl}`);
+        await page.goto(bookingUrl, { waitUntil: "networkidle2" });
 
-        await page.waitForSelector("button", { timeout: 30000 });
-        await new Promise(r => setTimeout(r, 2000));
+        // --- NY LOGIK: VÄNTA PÅ TIDSKNAPPAR ---
+        console.log("[LOG] Väntar på att tidsschemat ska laddas...");
+        
+        // Vi försöker hitta en knapp som ser ut som en tid (t.ex. "08:10")
+        // Vi ger den 15 sekunder att dyka upp
+        let times = [];
+        try {
+            await page.waitForFunction(() => {
+                const buttons = Array.from(document.querySelectorAll("button"));
+                return buttons.some(btn => btn.innerText.trim().match(/^\d{2}:\d{2}$/));
+            }, { timeout: 20000 });
+            
+            // Ge det en sekund extra så alla knappar hinner ritas ut
+            await new Promise(r => setTimeout(r, 2000));
 
-        const times = await page.evaluate(() => {
-            return Array.from(document.querySelectorAll("button"))
-                .map(el => el.innerText.trim())
-                .filter(text => text.match(/^\d{2}:\d{2}$/));
-        });
-
-        console.log("[INFO] Tider funna:", times.join(", "));
-        const available = times.find(t => t >= watchConfig.from && t <= watchConfig.to);
-
-        if (available) {
-            await resend.emails.send({
-                from: "TeePilot <onboarding@resend.dev>",
-                to: [watchConfig.email],
-                subject: "TeeTime hittad ⛳!",
-                html: `<h2>Tid hittad: ${available}</h2>`
+            times = await page.evaluate(() => {
+                return Array.from(document.querySelectorAll("button"))
+                    .map(el => el.innerText.trim())
+                    .filter(text => text.match(/^\d{2}:\d{2}$/));
             });
-            status = `Träff! Tid: ${available}`;
-            stopEverything();
+        } catch (e) {
+            console.log("[WARN] Inga tidsknappar dök upp inom 20 sekunder. Banan kan vara fullbokad eller sidan seg.");
+        }
+
+        if (times.length > 0) {
+            console.log(`[INFO] Tider funna: ${times.join(", ")}`);
+            const available = times.find(t => t >= watchConfig.from && t <= watchConfig.to);
+
+            if (available) {
+                console.log(`[MATCH] Hittade tid: ${available}! Skickar mail...`);
+                await resend.emails.send({
+                    from: "TeePilot <onboarding@resend.dev>",
+                    to: [watchConfig.email],
+                    subject: "TeeTime hittad ⛳!",
+                    html: `<h2>Tid hittad: ${available}</h2><p>Datum: ${watchConfig.date}</p>`
+                });
+                status = `Träff! Tid: ${available}`;
+                stopEverything();
+            } else {
+                status = `Senaste koll: ${new Date().toLocaleTimeString()} (Inga lediga i ditt intervall)`;
+            }
         } else {
-            status = `Senaste koll: ${new Date().toLocaleTimeString()} (Inga lediga)`;
+            console.log("[ERROR] Inga tider hittades på sidan överhuvudtaget.");
+            status = "Hittade inga tider på sidan. Fullbokat?";
         }
 
     } catch (err) {
         console.error(`[ERROR] ${err.message}`);
-        status = "Timeout/Fel vid sökning, försöker igen snart...";
+        status = "Timeout/Fel vid sökning...";
     } finally {
         if (activeBrowser) {
             await activeBrowser.close();
