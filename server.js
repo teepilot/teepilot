@@ -37,7 +37,7 @@ async function checkTimes() {
         await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
         page.setDefaultNavigationTimeout(60000);
 
-        // --- DIN GAMLA STABILA INLOGGNING ---
+        // --- DIN GAMLA FUNGERANDE INLOGGNING (ORÖRD) ---
         console.log("[LOG] Navigerar till Login...");
         await page.goto("https://mingolf.golf.se/Login", { waitUntil: "domcontentloaded" });
 
@@ -54,37 +54,27 @@ async function checkTimes() {
         console.log("[LOG] Skickar inloggning...");
         await Promise.all([
             page.keyboard.press('Enter'),
-            page.waitForNavigation({ waitUntil: "domcontentloaded" }).catch(() => {})
+            page.waitForNavigation({ waitUntil: "networkidle2" }).catch(() => console.log("Navigering tog tid, men fortsätter..."))
         ]);
 
-        // --- NY LOGIK FÖR BOKNINGSSIDAN STARTAR HÄR ---
+        // --- HÄRIFRÅN KÖR VI DEN NYA TEST-LOGIKEN FÖR BOKNINGSSIDAN ---
         console.log("[LOG] Går till bokningssida...");
-        // Vi kör domcontentloaded för att slippa timeout på tunga scripts
         await page.goto("https://mingolf.golf.se/bokning/#/", { waitUntil: "domcontentloaded" });
-        
-        // Vänta på att sidan faktiskt ritar upp något (Vasatorp-vyn)
         await new Promise(r => setTimeout(r, 8000)); 
 
-        // 1. KLICKA DATUM (Mus-simulering)
+        // 1. KLICKA DATUM
         const dayToPick = watchConfig.date.split("-")[2].replace(/^0+/, ''); 
         console.log(`[LOG] Letar efter datum: ${dayToPick}...`);
         
-        const dateClicked = await page.evaluate((day) => {
+        await page.evaluate((day) => {
             const btns = Array.from(document.querySelectorAll("button, .v-btn__content, span"));
             const target = btns.find(el => el.innerText && el.innerText.trim() === day);
-            if (target) {
-                target.click();
-                return true;
-            }
-            return false;
+            if (target) target.click();
         }, dayToPick);
 
-        if (dateClicked) {
-            console.log("[LOG] Datum valt, väntar på laddning...");
-            await new Promise(r => setTimeout(r, 4000));
-        }
+        await new Promise(r => setTimeout(r, 4000));
 
-        // 2. VÄLJ BANA (Tournament Course - Mus-simulering)
+        // 2. VÄLJ BANA (Med mus-simulering)
         console.log("[LOG] Väljer Tournament Course...");
         const courseHandle = await page.evaluateHandle(() => {
             const elements = Array.from(document.querySelectorAll("div, span, button, p"));
@@ -94,7 +84,7 @@ async function checkTimes() {
         if (courseHandle.asElement()) {
             const courseEl = courseHandle.asElement();
             await courseEl.hover();
-            await new Promise(r => setTimeout(r, 500));
+            await new Promise(r => setTimeout(r, 1000));
             await courseEl.click();
             console.log("[LOG] Ban-klick utfört.");
         }
@@ -108,7 +98,7 @@ async function checkTimes() {
             }, { timeout: 15000 });
             console.log("[LOG] Tider hittade!");
         } catch (e) {
-            console.log("[WARN] Inga tider dök upp inom 15s.");
+            console.log("[WARN] Inga tider dök upp.");
         }
 
         // 4. LÄS TIDER
@@ -128,7 +118,7 @@ async function checkTimes() {
                 from: "TeePilot <onboarding@resend.dev>",
                 to: [watchConfig.email],
                 subject: "TeeTime hittad ⛳!",
-                html: `<h2>Tid hittad: ${available}</h2><p>Bana: Tournament Course</p><p>Datum: ${watchConfig.date}</p>`
+                html: `<h2>Tid hittad: ${available}</h2><p>Datum: ${watchConfig.date}</p>`
             });
             status = `Hittad: ${available}`;
             stopEverything();
@@ -165,7 +155,6 @@ app.post("/start", async (req, res) => {
     await stopEverything();
     watchConfig = req.body;
     status = "Bevakning startad";
-    console.log("Startar bevakning för:", watchConfig.golfId);
     checkTimes();
     job = cron.schedule("*/5 * * * *", checkTimes);
     res.sendStatus(200);
@@ -178,5 +167,5 @@ app.post("/stop", async (req, res) => {
 
 app.get("/status", (req, res) => res.json({ status }));
 
-const PORT = process.env.PORT || 10000; // Render använder 10000 som standard
-app.listen(PORT, () => console.log(`Server redo på port ${PORT}!`));
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`Server online!`));
