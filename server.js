@@ -36,11 +36,9 @@ async function checkTimes() {
         await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
         page.setDefaultNavigationTimeout(60000);
 
-        // 1. LOGIN (Din säkra metod)
+        // 1. LOGIN (Din stabila metod)
         console.log("[LOG] Navigerar till Login...");
         await page.goto("https://mingolf.golf.se/Login", { waitUntil: "domcontentloaded" });
-
-        console.log("[LOG] Väntar på inmatningsfält...");
         await page.waitForSelector("input[type='password']", { timeout: 40000 });
 
         const inputs = await page.$$("input");
@@ -53,68 +51,74 @@ async function checkTimes() {
         console.log("[LOG] Skickar inloggning...");
         await Promise.all([
             page.keyboard.press('Enter'),
-            page.waitForNavigation({ waitUntil: "networkidle2" }).catch(() => console.log("Navigering tog tid, men fortsätter..."))
+            page.waitForNavigation({ waitUntil: "networkidle2" }).catch(() => {})
         ]);
 
-        // 2. GÅ TILL BOKNINGSSIDA
+        // 2. BOKNINGSSIDA
         console.log("[LOG] Går till bokningssida...");
         await page.goto("https://mingolf.golf.se/bokning/#/", { waitUntil: "networkidle2" });
-        await new Promise(r => setTimeout(r, 6000)); // Ge sidan rejält med tid att ladda Vasatorp
+        await new Promise(r => setTimeout(r, 7000)); 
 
-        // 3. VÄLJ DATUM (Om det inte är idag)
-        // Vi letar efter en siffra i kalendern som matchar dagen i ditt datum (t.ex. "15")
+        // 3. DATUMVAL (Förbättrad)
         const dayToPick = watchConfig.date.split("-")[2].replace(/^0+/, ''); 
         console.log(`[LOG] Letar efter datum: ${dayToPick}...`);
         await page.evaluate((day) => {
-            const dayElements = Array.from(document.querySelectorAll("button, span, div.v-btn__content"));
-            const targetDay = dayElements.find(el => el.innerText && el.innerText.trim() === day);
-            if (targetDay) targetDay.click();
+            const btns = Array.from(document.querySelectorAll("button, .v-btn__content"));
+            const target = btns.find(el => el.innerText && el.innerText.trim() === day);
+            if (target) {
+                target.scrollIntoView();
+                target.click();
+            }
         }, dayToPick);
-        await new Promise(r => setTimeout(r, 2000));
+        
+        // VIKTIGT: Vänta på att datum-laddningen blir klar innan banval
+        await new Promise(r => setTimeout(r, 4000));
 
-        // 4. VÄLJ BANA
+        // 4. BANVAL (Förbättrad med klick-verifiering)
         console.log("[LOG] Väljer Tournament Course...");
         await page.evaluate(() => {
-            const items = Array.from(document.querySelectorAll("div, span, button, p"));
-            const course = items.find(e => e.innerText && e.innerText.includes("Tournament Course"));
-            if (course) {
-                course.click();
-                // Scrolla ner lite för att tvinga fram laddning av tider
-                window.scrollBy(0, 400);
+            const allElements = Array.from(document.querySelectorAll("div, span, button, p, h3"));
+            const courseBtn = allElements.find(e => e.innerText && e.innerText.includes("Tournament Course"));
+            if (courseBtn) {
+                courseBtn.click();
+                // Scrolla ner för att aktivera laddning av tider
+                window.scrollBy(0, 500);
             }
         });
         
         console.log("[LOG] Väntar på att tiderna ska renderas...");
-        await new Promise(r => setTimeout(r, 5000)); 
+        await new Promise(r => setTimeout(r, 6000)); 
 
-        // 5. LÄS AV TIDERNA
+        // 5. LÄS TIDER (Med extra koll på "visa fler" om det finns)
         const times = await page.evaluate(() => {
-            // Vi letar specifikt efter knappar som ser ut som tider
-            return Array.from(document.querySelectorAll("button"))
+            // Ibland ligger tiderna i knappar, ibland i divar med specifik klass
+            const buttons = Array.from(document.querySelectorAll("button"));
+            return buttons
                 .map(el => el.innerText.trim())
                 .filter(text => text.match(/^\d{2}:\d{2}$/));
         });
 
         if (times.length > 0) {
-            console.log(`[INFO] Tider funna: ${times.join(", ")}`);
+            console.log(`[INFO] Tider funna: ${times.length} stycken.`);
             const available = times.find(t => t >= watchConfig.from && t <= watchConfig.to);
 
             if (available) {
-                console.log("[MATCH] Skickar mail...");
+                console.log(`[MATCH] Hittade tid: ${available}`);
                 await resend.emails.send({
                     from: "TeePilot <onboarding@resend.dev>",
                     to: [watchConfig.email],
                     subject: "TeeTime hittad ⛳!",
-                    html: `<h2>Tid hittad: ${available}</h2><p>Bana: Tournament Course</p><p>Datum: ${watchConfig.date}</p>`
+                    html: `<h2>Tid hittad: ${available}</h2><p>Datum: ${watchConfig.date}</p>`
                 });
-                status = `Hittad: ${available}`;
+                status = `Träff! ${available}`;
                 stopEverything();
             } else {
-                status = `Sökt kl ${new Date().toLocaleTimeString()} (Ingen ledig än)`;
+                status = `Sökt ${new Date().toLocaleTimeString()} (Ingen ledig i intervallet)`;
+                console.log(`[INFO] Tider utanför intervall: ${times.join(", ")}`);
             }
         } else {
-            console.log("[WARN] Inga tider hittades. Provar att ta en 'skärmdump' i loggen (virtuellt)...");
-            status = "Hittade inga tider. Är datumet/banan rätt vald?";
+            console.log("[WARN] Fortfarande inga tider. Sidan kan kräva ett klick till eller mer tid.");
+            status = "Hittade inga tider. Kontrollera datum/bana på skärmen.";
         }
 
     } catch (err) {
@@ -160,4 +164,4 @@ app.post("/stop", async (req, res) => {
 app.get("/status", (req, res) => res.json({ status }));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server redo!`));
+app.listen(PORT, () => console.log(`Server körs!`));
