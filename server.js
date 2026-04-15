@@ -32,31 +32,31 @@ async function checkTimes() {
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-gpu",
-                "--js-flags=\"--max-old-space-size=256\""
+                "--single-process", // Hjälper minnet på små servrar
+                "--no-zygote"
             ],
             executablePath: await chromium.executablePath(),
             headless: chromium.headless,
         });
 
         const page = await browser.newPage();
+        // Vi sätter en låg timeout för att inte ligga och dra minne i onödan
+        page.setDefaultTimeout(25000); 
         await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
         
-        // AGGRESSIV BLOCKERING för att överleva på Renders gratis-RAM
+        // TOTAL BLOCKERING
         await page.setRequestInterception(true);
         page.on('request', (req) => {
             const type = req.resourceType();
-            if (['image', 'media', 'font', 'stylesheet'].includes(type)) {
-                req.abort();
-            } else {
-                req.continue();
-            }
+            // Vi tillåter ENDAST document och script. Allt annat (CSS, Bilder, Typsnitt, XHR-annonser) dör.
+            if (['document', 'script', 'fetch', 'xhr'].includes(type)) req.continue();
+            else req.abort();
         });
 
         // 1. LOGIN
-        console.log("[LOG] Navigerar till Login...");
+        console.log("[LOG] Login...");
         await page.goto("https://mingolf.golf.se/Login", { waitUntil: "domcontentloaded" });
-        await page.waitForSelector("input[type='password']", { timeout: 25000 });
-
+        
         await page.evaluate((id, pw) => {
             const inputs = Array.from(document.querySelectorAll("input"));
             const u = inputs.find(i => i.type === "text" || i.type === "email");
@@ -64,44 +64,42 @@ async function checkTimes() {
             if (u && p) { u.value = id; p.value = pw; }
         }, watchConfig.golfId, watchConfig.password);
 
-        console.log("[LOG] Skickar inloggning...");
         await page.keyboard.press('Enter');
-        await new Promise(r => setTimeout(r, 6000)); 
+        await new Promise(r => setTimeout(r, 5000)); 
 
-        // 2. GÅ TILL BOKNING
+        // 2. BOKNING
         console.log("[LOG] Går till bokningssida...");
         await page.goto("https://mingolf.golf.se/bokning/#/", { waitUntil: "domcontentloaded" });
-        await new Promise(r => setTimeout(r, 8000)); 
+        await new Promise(r => setTimeout(r, 7000)); 
 
-        // 3. VÄLJ BANA OCH DATUM (NY ORDNING)
+        // 3. VÄLJ BANA & DATUM
         const day = watchConfig.date.split("-")[2].replace(/^0+/, ''); 
 
-        // Steg A: Klicka bana
-        console.log("[LOG] Väljer Tournament Course...");
-        const courseOk = await page.evaluate(() => {
-            window.scrollTo(0, 0); // Scrolla upp för säkerhets skull
-            const el = Array.from(document.querySelectorAll("button, span, div, p"))
-                           .find(e => e.innerText && e.innerText.includes("Tournament Course"));
-            if (el) { el.click(); return true; }
-            return false;
-        });
-        console.log(`[LOG] Bana klickad: ${courseOk}`);
+        const results = await page.evaluate(async (d) => {
+            const clickByText = (txt, exact = false) => {
+                const el = Array.from(document.querySelectorAll("button, span, div, p"))
+                               .find(e => exact ? e.innerText?.trim() === txt : e.innerText?.includes(txt));
+                if (el) { el.click(); return true; }
+                return false;
+            };
 
-        await new Promise(r => setTimeout(r, 4000)); 
-
-        // Steg B: Klicka datum
-        console.log(`[LOG] Väljer datum: ${day}...`);
-        const dateOk = await page.evaluate((d) => {
-            const el = Array.from(document.querySelectorAll("button, span, div, p"))
-                           .find(e => e.innerText && e.innerText.trim() === d);
-            if (el) { el.click(); return true; }
-            return false;
+            const c = clickByText("Tournament Course");
+            // Vänta ett kort ögonblick inuti browsern
+            await new Promise(r => setTimeout(r, 2000));
+            const dOk = clickByText(d, true);
+            
+            return { c, dOk };
         }, day);
-        console.log(`[LOG] Datum klickat: ${dateOk}`);
-        
-        await new Promise(r => setTimeout(r, 6000)); 
 
-        // 4. LÄS AV TIDER
+        console.log(`[LOG] Bana: ${results.c}, Datum: ${results.dOk}`);
+        
+        if (!results.c && !results.dOk) {
+            throw new Error("Kunde inte hitta knappar - Minnet förmodligen för belastat");
+        }
+
+        await new Promise(r => setTimeout(r, 5000)); 
+
+        // 4. LÄS TIDER
         const times = await page.evaluate(() => {
             return Array.from(document.querySelectorAll("button"))
                 .map(el => el.innerText.trim())
@@ -109,32 +107,26 @@ async function checkTimes() {
         });
 
         if (times.length > 0) {
-            console.log(`[INFO] Hittade ${times.length} tider: ${times.join(", ")}`);
+            console.log(`[INFO] Tider: ${times.length} st.`);
             const available = times.find(t => t >= watchConfig.from && t <= watchConfig.to);
-
             if (available) {
-                console.log(`[MATCH] Hittade ledig tid: ${available}! Skickar mail...`);
                 await resend.emails.send({
                     from: "TeePilot <onboarding@resend.dev>",
                     to: [watchConfig.email],
-                    subject: "TeeTime hittad ⛳!",
-                    html: `<h2>Tid hittad: ${available}</h2><p>Bana: Tournament Course</p><p>Datum: ${watchConfig.date}</p>`
+                    subject: "TeeTime!",
+                    html: `<b>Tid hittad: ${available}</b>`
                 });
-                status = `Träff! ${available}`;
+                status = `Träff: ${available}`;
                 stopEverything();
-            } else {
-                status = `Sökt ${new Date().toLocaleTimeString()} (Ingen i ditt intervall)`;
             }
-        } else {
-            console.log("[WARN] Inga tidsknappar hittades på sidan.");
-            status = "Hittade inga tider";
         }
 
     } catch (err) {
         console.error(`[ERROR] ${err.message}`);
-        status = "Fel vid sökning...";
+        status = "Försöker igen nästa cykel...";
     } finally {
         if (browser) {
+            // Vi tvingar ner webbläsaren snabbt för att frigöra RAM till nästa cron-jobb
             await browser.close().catch(() => {});
             browser = null;
         }
@@ -144,7 +136,6 @@ async function checkTimes() {
 }
 
 async function stopEverything() {
-    console.log("Stoppar all bevakning...");
     if (job) { job.stop(); job = null; }
     watchConfig = null;
     status = "Ingen aktiv bevakning";
@@ -155,7 +146,6 @@ app.post("/start", async (req, res) => {
     await stopEverything();
     watchConfig = req.body;
     status = "Bevakning startad";
-    console.log("Startar för:", watchConfig.golfId);
     checkTimes();
     job = cron.schedule("*/5 * * * *", checkTimes);
     res.sendStatus(200);
@@ -168,5 +158,4 @@ app.post("/stop", async (req, res) => {
 
 app.get("/status", (req, res) => res.json({ status }));
 
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`TeePilot redo på port ${PORT}`));
+app.listen(process.env.PORT || 10000);
