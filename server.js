@@ -14,7 +14,6 @@ let job = null;
 let watchConfig = null;
 let status = "Ingen aktiv bevakning";
 let isSearching = false;
-let activeBrowser = null;
 
 app.get("/", (req, res) => res.send(`<h1>TeePilot Status</h1><p>${status}</p>`));
 
@@ -22,84 +21,79 @@ async function checkTimes() {
     if (!watchConfig || isSearching) return;
     isSearching = true;
 
+    let browser = null;
     try {
         console.log(`--- [${new Date().toLocaleTimeString()}] Startar sökning ---`);
-        status = "Sökning pågår...";
-
-        activeBrowser = await puppeteer.launch({
-            args: [...chromium.args, "--disable-blink-features=AutomationControlled", "--single-process"],
+        
+        browser = await puppeteer.launch({
+            args: [
+                ...chromium.args, 
+                "--disable-blink-features=AutomationControlled", 
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage", // Viktigt för minnet på Render
+                "--disable-gpu"
+            ],
             executablePath: await chromium.executablePath(),
             headless: chromium.headless,
-            defaultViewport: { width: 1280, height: 1000 }
+            protocolTimeout: 120000 // Vi dubblar protocol timeout för att slippa ditt felmeddelande
         });
 
-        const page = await activeBrowser.newPage();
+        const page = await browser.newPage();
         await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-        page.setDefaultNavigationTimeout(60000);
+        
+        // Blockera onödiga resurser för att spara CPU/Minne
+        await page.setRequestInterception(true);
+        page.on('request', (req) => {
+            if (['image', 'font', 'stylesheet', 'media'].includes(req.resourceType())) req.abort();
+            else req.continue();
+        });
 
-        // --- DIN GAMLA FUNGERANDE INLOGGNING (ORÖRD) ---
+        // 1. LOGIN
         console.log("[LOG] Navigerar till Login...");
         await page.goto("https://mingolf.golf.se/Login", { waitUntil: "domcontentloaded" });
 
         console.log("[LOG] Väntar på inmatningsfält...");
-        await page.waitForSelector("input[type='password']", { timeout: 40000 });
+        await page.waitForSelector("input[type='password']", { timeout: 30000 });
 
-        const inputs = await page.$$("input");
-        for (const input of inputs) {
-            const type = await page.evaluate(el => el.type, input);
-            if (type === "text" || type === "email") await input.type(watchConfig.golfId);
-            if (type === "password") await input.type(watchConfig.password);
-        }
+        // Vi använder page.evaluate för att fylla i fälten blixtsnabbt utan att Puppeteer behöver "vakta" fälten
+        await page.evaluate((id, pw) => {
+            const inputs = Array.from(document.querySelectorAll("input"));
+            const u = inputs.find(i => i.type === "text" || i.type === "email");
+            const p = inputs.find(i => i.type === "password");
+            if (u) u.value = id;
+            if (p) p.value = pw;
+        }, watchConfig.golfId, watchConfig.password);
 
         console.log("[LOG] Skickar inloggning...");
-        await Promise.all([
-            page.keyboard.press('Enter'),
-            page.waitForNavigation({ waitUntil: "networkidle2" }).catch(() => console.log("Navigering tog tid, men fortsätter..."))
-        ]);
+        await page.keyboard.press('Enter');
+        await new Promise(r => setTimeout(r, 5000)); // Ge den tid att tugga inloggningen
 
-        // --- HÄRIFRÅN KÖR VI DEN NYA TEST-LOGIKEN FÖR BOKNINGSSIDAN ---
+        // 2. BOKNINGSSIDA
         console.log("[LOG] Går till bokningssida...");
         await page.goto("https://mingolf.golf.se/bokning/#/", { waitUntil: "domcontentloaded" });
-        await new Promise(r => setTimeout(r, 8000)); 
+        await new Promise(r => setTimeout(r, 6000)); 
 
-        // 1. KLICKA DATUM
+        // 3. DATUM & BANA (Körs i ett svep för att spara CPU-anrop)
         const dayToPick = watchConfig.date.split("-")[2].replace(/^0+/, ''); 
-        console.log(`[LOG] Letar efter datum: ${dayToPick}...`);
-        
-        await page.evaluate((day) => {
-            const btns = Array.from(document.querySelectorAll("button, .v-btn__content, span"));
-            const target = btns.find(el => el.innerText && el.innerText.trim() === day);
-            if (target) target.click();
+        console.log(`[LOG] Söker datum ${dayToPick} och bana...`);
+
+        const result = await page.evaluate((day) => {
+            const btns = Array.from(document.querySelectorAll("button, span, div, p"));
+            
+            // Klicka datum
+            const dateBtn = btns.find(el => el.innerText && el.innerText.trim() === day);
+            if (dateBtn) dateBtn.click();
+            
+            // Klicka bana (Tournament Course)
+            const courseBtn = btns.find(el => el.innerText && el.innerText.includes("Tournament Course"));
+            if (courseBtn) courseBtn.click();
+            
+            return !!(dateBtn && courseBtn);
         }, dayToPick);
 
-        await new Promise(r => setTimeout(r, 4000));
-
-        // 2. VÄLJ BANA (Med mus-simulering)
-        console.log("[LOG] Väljer Tournament Course...");
-        const courseHandle = await page.evaluateHandle(() => {
-            const elements = Array.from(document.querySelectorAll("div, span, button, p"));
-            return elements.find(e => e.innerText && e.innerText.includes("Tournament Course"));
-        });
-
-        if (courseHandle.asElement()) {
-            const courseEl = courseHandle.asElement();
-            await courseEl.hover();
-            await new Promise(r => setTimeout(r, 1000));
-            await courseEl.click();
-            console.log("[LOG] Ban-klick utfört.");
-        }
-
-        // 3. VÄNTA PÅ INNEHÅLL (Tidsknappar)
-        console.log("[LOG] Väntar på att tiderna ska renderas...");
-        try {
-            await page.waitForFunction(() => {
-                const buttons = Array.from(document.querySelectorAll("button"));
-                return buttons.some(btn => btn.innerText.trim().match(/^\d{2}:\d{2}$/));
-            }, { timeout: 15000 });
-            console.log("[LOG] Tider hittade!");
-        } catch (e) {
-            console.log("[WARN] Inga tider dök upp.");
-        }
+        console.log(`[LOG] Val utförda: ${result}`);
+        await new Promise(r => setTimeout(r, 5000)); 
 
         // 4. LÄS TIDER
         const times = await page.evaluate(() => {
@@ -113,41 +107,33 @@ async function checkTimes() {
         const available = times.find(t => t >= watchConfig.from && t <= watchConfig.to);
 
         if (available) {
-            console.log("[MATCH] Skickar mail...");
+            console.log("[MATCH] Skickar mail!");
             await resend.emails.send({
                 from: "TeePilot <onboarding@resend.dev>",
                 to: [watchConfig.email],
                 subject: "TeeTime hittad ⛳!",
-                html: `<h2>Tid hittad: ${available}</h2><p>Datum: ${watchConfig.date}</p>`
+                html: `<h2>Tid hittad: ${available}</h2>`
             });
-            status = `Hittad: ${available}`;
+            status = `Träff! ${available}`;
             stopEverything();
         } else {
-            status = `Sökt kl ${new Date().toLocaleTimeString()} (Inga lediga)`;
+            status = `Senaste koll: ${new Date().toLocaleTimeString()}`;
         }
 
     } catch (err) {
         console.error(`[ERROR] ${err.message}`);
         status = "Fel vid sökning...";
     } finally {
-        if (activeBrowser) {
-            await activeBrowser.close();
-            activeBrowser = null;
-        }
+        if (browser) await browser.close();
         isSearching = false;
         console.log("-----------------------------------------------");
     }
 }
 
 async function stopEverything() {
-    console.log("Stoppar all bevakning...");
     if (job) { job.stop(); job = null; }
     watchConfig = null;
     status = "Ingen aktiv bevakning";
-    if (activeBrowser) {
-        try { await activeBrowser.close(); } catch (e) {}
-        activeBrowser = null;
-    }
     isSearching = false;
 }
 
@@ -168,4 +154,4 @@ app.post("/stop", async (req, res) => {
 app.get("/status", (req, res) => res.json({ status }));
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`Server online!`));
+app.listen(PORT, () => console.log("Server redo!"));
