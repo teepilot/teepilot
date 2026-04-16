@@ -39,10 +39,10 @@ async function checkTimes() {
         });
 
         const page = await browser.newPage();
-        page.setDefaultTimeout(30000);
+        page.setDefaultTimeout(40000);
         await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
         
-        // BLOCKERING: Vi stoppar bilder och typsnitt, men BEHÅLLER CSS (för att knapparna ska synas)
+        // Blockering för att spara RAM men behåll CSS för klickbarhet
         await page.setRequestInterception(true);
         page.on('request', (req) => {
             const type = req.resourceType();
@@ -53,7 +53,7 @@ async function checkTimes() {
         // 1. LOGIN
         console.log("[LOG] Navigerar till Login...");
         await page.goto("https://mingolf.golf.se/Login", { waitUntil: "domcontentloaded" });
-        await page.waitForSelector("input[type='password']", { timeout: 20000 });
+        await page.waitForSelector("input[type='password']", { timeout: 30000 });
 
         await page.evaluate((id, pw) => {
             const inputs = Array.from(document.querySelectorAll("input"));
@@ -64,60 +64,65 @@ async function checkTimes() {
 
         console.log("[LOG] Skickar inloggning...");
         await page.keyboard.press('Enter');
-        await new Promise(r => setTimeout(r, 6000)); 
+        await new Promise(r => setTimeout(r, 8000)); 
 
         // 2. GÅ TILL BOKNING
         console.log("[LOG] Går till bokningssida...");
         await page.goto("https://mingolf.golf.se/bokning/#/", { waitUntil: "networkidle2" });
-        // Ge sidan ordentligt med tid att ladda in banlistan
-        await new Promise(r => setTimeout(r, 10000)); 
-
-        // 3. VÄLJ BANA OCH DATUM
+        
+        // 3. VÄLJ BANA OCH DATUM (DEEP SEARCH LOOP)
         const day = watchConfig.date.split("-")[2].replace(/^0+/, ''); 
+        console.log(`[LOG] Söker efter Tournament Course och datum ${day}...`);
 
-        console.log("[LOG] Letar efter knappar på sidan...");
-        const results = await page.evaluate(async (d) => {
-            // Scrolla lite för att väcka sidan
-            window.scrollBy(0, 300);
-            await new Promise(r => setTimeout(r, 500));
-            window.scrollBy(0, -300);
+        const interaction = await page.evaluate(async (d) => {
+            const delay = (ms) => new Promise(r => setTimeout(r, ms));
+            
+            // A. Försök stänga eventuella banners (Cookies/Info)
+            const allElements = Array.from(document.querySelectorAll("button, span, div"));
+            const closeBtn = allElements.find(el => 
+                ["Godkänn", "OK", "Stäng", "Accept"].some(txt => el.innerText?.includes(txt))
+            );
+            if (closeBtn) {
+                closeBtn.click();
+                await delay(1500);
+            }
 
-            const findAndClick = (text, exact = false) => {
-                // Vi letar i alla vanliga klickbara element
-                const elements = Array.from(document.querySelectorAll("button, .v-btn__content, span, div, p"));
-                const target = elements.find(el => {
-                    const content = el.innerText ? el.innerText.trim() : "";
-                    return exact ? content === text : content.includes(text);
-                });
-                
-                if (target) {
-                    target.click();
-                    return true;
-                }
-                return false;
-            };
+            // B. Vänta på Tournament Course i en loop (max 15 sekunder)
+            let courseBtn = null;
+            for (let i = 0; i < 30; i++) {
+                const els = Array.from(document.querySelectorAll("button, .v-btn__content, span, div, p"));
+                courseBtn = els.find(el => el.innerText?.includes("Tournament Course"));
+                if (courseBtn) break;
+                await delay(500);
+            }
 
-            // Klicka bana först
-            const cOk = findAndClick("Tournament Course", false);
+            if (!courseBtn) return { cOk: false, dOk: false, msg: "Hittade inte banan" };
+
+            // C. Klicka på banan
+            courseBtn.click();
+            await delay(4000); // Vänta på att kalendern laddas efter banval
+
+            // D. Klicka på datumet (Exakt matchning av siffran)
+            const elsAfter = Array.from(document.querySelectorAll("button, .v-btn__content, span"));
+            const dateBtn = elsAfter.find(el => el.innerText?.trim() === d);
             
-            // Vänta på att kalendern reagerar
-            if (cOk) await new Promise(r => setTimeout(r, 2000));
-            
-            // Klicka datum
-            const dOk = findAndClick(d, true);
-            
-            return { cOk, dOk };
+            if (dateBtn) {
+                dateBtn.click();
+                return { cOk: true, dOk: true };
+            }
+
+            return { cOk: true, dOk: false, msg: "Hittade banan men inte datumet" };
         }, day);
 
-        console.log(`[LOG] Bana: ${results.cOk}, Datum: ${results.dOk}`);
+        console.log(`[LOG] Resultat: ${interaction.cOk ? "Bana OK" : "Bana MISS"} | ${interaction.dOk ? "Datum OK" : "Datum MISS"}`);
+        if (interaction.msg) console.log(`[DEBUG] ${interaction.msg}`);
 
-        if (results.cOk || results.dOk) {
-            // Vänta på att tiderna laddas in i listan
-            await new Promise(r => setTimeout(r, 6000)); 
+        if (interaction.cOk && interaction.dOk) {
+            console.log("[LOG] Väntar på tider...");
+            await new Promise(r => setTimeout(r, 7000)); 
 
             // 4. LÄS AV TIDER
             const times = await page.evaluate(() => {
-                // Tider på Min Golf ligger oftast i knappar med formatet "HH:mm"
                 return Array.from(document.querySelectorAll("button, .v-btn"))
                     .map(el => el.innerText ? el.innerText.trim() : "")
                     .filter(text => /^\d{2}:\d{2}$/.test(text));
@@ -138,15 +143,14 @@ async function checkTimes() {
                     status = `Träff! ${available}`;
                     stopEverything();
                 } else {
-                    status = `Sökt ${new Date().toLocaleTimeString()} (Ingen match)`;
+                    status = `Sökt ${new Date().toLocaleTimeString()} (Ingen match i intervallet)`;
                 }
             } else {
-                console.log("[WARN] Inga tidsknappar synliga ännu.");
+                console.log("[WARN] Inga tider synliga på sidan.");
                 status = "Inga tider hittade";
             }
         } else {
-            console.log("[ERROR] Kunde inte interagera med bana/datum.");
-            status = "Kunde inte klicka på valen";
+            status = interaction.msg || "Kunde inte klicka på valen";
         }
 
     } catch (err) {
@@ -185,4 +189,5 @@ app.post("/stop", async (req, res) => {
 
 app.get("/status", (req, res) => res.json({ status }));
 
-app.listen(process.env.PORT || 10000, () => console.log("Server online!"));
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`TeePilot redo på port ${PORT}`));
