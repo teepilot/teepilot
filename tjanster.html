@@ -150,178 +150,131 @@ button:hover {
 </head>
 <body>
 
-<nav class="navbar">
-    <div class="logo">
-        <img src="TeePilot-Logo.png" alt="Logga">
-    </div>
-
-    <ul class="nav-links">
-        <li><a href="index.html">Hem</a></li>
-        <li><a href="about.html">Om</a></li>
-        <li><a href="tjanster.html">Tjänster</a></li>
-        <li><a href="konto.html">Konto</a></li>
-    </ul>
-</nav>
-
-<section class="hero">
-    <div class="hero-content">
-        <h1>TeePilot</h1>
-        <p>Hitta en TeeTime</p>
-    </div>
-</section>
-
-<section class="page-header">
-    <h1>Bevaka Tee Time</h1>
-    <p>Välj datum och tidsspann - vi gör resten.</p>
-</section>
-
-<section class="service-container">
-
-    <h2>Starta bevakning</h2>
-
-    <div class="form-group">
-        <label>Bana</label>
-        <select id="course">
-            <option value="vasatorp">Vasatorps GK</option>
-        </select>
-    </div>
-
-    <div class="form-group">
-        <label>Välj datum</label>
-        <input type="text" id="datePicker" placeholder="Klicka för att välja datum">
+    <nav class="navbar">
+        <div class="logo"><img src="TeePilot-Logo.png" alt="TeePilot Logo"></div>
+        <ul class="nav-links">
+            <li><a href="index.html">Hem</a></li>
+            <li><a href="tjanster.html">Tjänster</a></li>
+            <li><a href="konto.html">Konto</a></li>
+        </ul>
+    </nav>
+    
+    <div class="page-header">
+        <h1>Bevakning</h1>
+        <p>Vasatorp Tournament Course</p>
     </div>
     
-    <div class="form-group">
-        <label>Från</label>
-        <input type="text" id="timeFrom" placeholder="Välj starttid">
+    <div class="service-container">
+        <div class="input-group">
+            <label>GOLF-ID (ÅÅMMDD-XXX)</label>
+            <input type="text" id="golfIdInput" placeholder="ÅÅMMDD-XXX">
+        </div>
+    
+        <div class="input-group">
+            <label>LÖSENORD (MINGOLF)</label>
+            <input type="password" id="golfPasswordInput" placeholder="Ditt lösenord...">
+        </div>
+    
+        <div class="input-group">
+            <label>VÄLJ DATUM</label>
+            <input type="text" id="datePicker" placeholder="Klicka för att välja datum...">
+        </div>
+    
+        <div style="display: flex; gap: 20px;">
+            <div class="input-group" style="flex: 1;">
+                <label>FRÅN TID</label>
+                <select id="fromTime">
+                    <option value="06">06:00</option>
+                    <option value="07">07:00</option>
+                    <option value="08">08:00</option>
+                    <option value="09">09:00</option>
+                    <option value="10">10:00</option>
+                    <option value="11">11:00</option>
+                </select>
+            </div>
+            <div class="input-group" style="flex: 1;">
+                <label>TILL TID</label>
+                <select id="toTime">
+                    <option value="14">14:00</option>
+                    <option value="15">15:00</option>
+                    <option value="16">16:00</option>
+                    <option value="17">17:00</option>
+                    <option value="18">18:00</option>
+                    <option value="19">19:00</option>
+                </select>
+            </div>
+        </div>
+    
+        <button class="btn-start" onclick="startWatch()">STARTA BEVAKNING</button>
+        <button class="btn-stop" onclick="stopWatch()">STOPPA BEVAKNING</button>
+    
+        <p id="status">Ingen aktiv bevakning</p>
     </div>
     
-    <div class="form-group">
-        <label>Till</label>
-        <input type="text" id="timeTo" placeholder="Välj sluttid">
-    </div>
-    <div class="form-group">
-        <label>Lösenord(Min Golf)</label>
-        <input type="password" id="golfPassword" placeholder="Min Golf lösenord">
-    </div>
-    <button onclick="startWatch()">Starta Bevakning</button>
-    <button class="stop-btn" onclick="stopWatch()">Stoppa Bevakning</button>
-
-    <div class="status-box" id="status">
-        Ingen aktiv bevakning.
-    </div>
-
-</section>
-
-<footer>
-    <div class="footer-links">
-        <a href="about.html">Om TeePilot</a>
-        <a href="tjanster.html">Tjänster</a>
-        <a href="konto.html">Konto</a>
-        <a href="index.html#contact">Kontakt</a>
-    </div>
-
-    <p>© 2026 TeePilot. Alla rättigheter förbehållna.</p>
-    <img src="TeePilot-Logo.png" style="height: 50px; margin-top: 20px;">
-</footer>
-
-<script>
+    <script>
+        flatpickr("#datePicker", {
+            minDate: "today",
+            dateFormat: "Y-m-d",
+            disableMobile: true
+        });
     
-    // 1. Initiera kalendern för datumval
-    flatpickr("#datePicker", {
-        minDate: "today",
-        dateFormat: "Y-m-d",
-        disableMobile: true
-    });
-
-    // 2. Funktion för att starta bevakningen
-    async function startWatch() {
-        const date = document.getElementById("datePicker").value;
-        const from = document.getElementById("fromTime").value; // Hämtar värde från <select id="fromTime">
-        const to = document.getElementById("toTime").value;     // Hämtar värde från <select id="toTime">
-        const statusEl = document.getElementById("status");
-        
-        // Hämta sparade uppgifter från localStorage (sparades på konto.html)
-        const golfId = localStorage.getItem("userGolfId");
-        const password = localStorage.getItem("userPassword");
-        const email = localStorage.getItem("userEmail");
-        
-        // Enkel kontroll att allt är ifyllt
-        if (!date || !from || !to) {
-            alert("Vänligen välj både datum och tidsintervall.");
-            return;
-        }
-
-        if (!golfId || !password) {
-            alert("Inloggningsuppgifter saknas. Gå till 'Konto' och se till att du är inloggad först.");
-            return;
-        }
-        
-        statusEl.innerText = "Kontaktar servern...";
-        
-        const data = {
-            date,
-            from: parseInt(from),
-            to: parseInt(to),
-            golfId,
-            password,
-            email
-        };
-        
-        try {
-            const response = await fetch("https://teepilot-server.onrender.com/start", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(data)
-            });
-
-            if (response.ok) {
-                statusEl.innerText = `Bevakning aktiv: Vasatorp TC | ${date} | kl ${from}-${to}`;
-            } else {
-                statusEl.innerText = "Servern kunde inte starta bevakningen. Kontrollera dina uppgifter.";
+        async function startWatch() {
+            const golfId = document.getElementById("golfIdInput").value;
+            const password = document.getElementById("golfPasswordInput").value;
+            const date = document.getElementById("datePicker").value;
+            const from = document.getElementById("fromTime").value;
+            const to = document.getElementById("toTime").value;
+            const email = localStorage.getItem("userEmail"); // E-post hämtas fortfarande från inloggningen
+            
+            if (!golfId || !password || !date) {
+                alert("Vänligen fyll i Golf-ID, lösenord och datum.");
+                return;
             }
-        } catch (err) {
-            console.error("Fel vid anrop:", err);
-            statusEl.innerText = "Kunde inte ansluta till servern. Kontrollera att den körs på Render.";
-        }
-    }
-
-    // 3. Funktion för att stoppa bevakningen
-    async function stopWatch() {
-        const statusEl = document.getElementById("status");
-        try {
-            const response = await fetch("https://teepilot-server.onrender.com/stop", { 
-                method: "POST" 
-            });
-            if (response.ok) {
-                statusEl.innerText = "Bevakning stoppad.";
+    
+            document.getElementById("status").innerText = "Kontaktar servern...";
+    
+            try {
+                const response = await fetch("https://teepilot-server.onrender.com/start", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        golfId,
+                        password,
+                        date,
+                        from: parseInt(from),
+                        to: parseInt(to),
+                        email: email || "din-mail@exempel.se" // Fallback om ingen mail hittas
+                    })
+                });
+    
+                if (response.ok) {
+                    document.getElementById("status").innerText = "Bevakning startad! Vi mailar när vi hittar en tid.";
+                } else {
+                    document.getElementById("status").innerText = "Kunde inte starta. Dubbelkolla Golf-ID och lösenord.";
+                }
+            } catch (err) {
+                document.getElementById("status").innerText = "Serverfel. Kontrollera att din Render-server är igång.";
             }
-        } catch (err) {
-            console.error("Kunde inte stoppa:", err);
         }
-    }
-
-    // 4. Funktion för att hämta aktuell status från servern
-    async function updateStatus() {
-        const statusEl = document.getElementById("status");
-        try {
-            const res = await fetch("https://teepilot-server.onrender.com/status");
-            if (res.ok) {
+    
+        async function stopWatch() {
+            try {
+                await fetch("https://teepilot-server.onrender.com/stop", { method: "POST" });
+                document.getElementById("status").innerText = "Bevakning stoppad.";
+            } catch (err) {}
+        }
+    
+        async function updateStatus() {
+            try {
+                const res = await fetch("https://teepilot-server.onrender.com/status");
                 const data = await res.json();
-                statusEl.innerText = data.status;
-            }
-        } catch (err) {
-            // Om servern är avstängd eller sover (Render gratis-plan)
-            if (statusEl.innerText !== "Bevakning stoppad.") {
-                statusEl.innerText = "Servern sover eller är offline...";
-            }
+                document.getElementById("status").innerText = data.status;
+            } catch (err) {}
         }
-    }
-
-    // Starta statusuppdatering direkt och kör sedan var 10:e sekund
-    window.onload = updateStatus;
-    setInterval(updateStatus, 10000);
     
+        window.onload = updateStatus;
+        setInterval(updateStatus, 10000);
     </script>
-</body>
-</html>
+    
+    </body>
+    </html>
