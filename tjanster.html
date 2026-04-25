@@ -256,73 +256,93 @@ const toPicker = flatpickr("#timeTo", {
 </script>
 <script>
     
-    async function startWatch() {
-    
-    const course = document.getElementById("course").value;
-    const date = document.getElementById("datePicker").value;
-    const from = document.getElementById("timeFrom").value;
-    const to = document.getElementById("timeTo").value;
-    
-    // hämtar datan flr puppeter
-    const golfId = localStorage.getItem("userGolfId");
-    const password = document.getElementById("golfPassword").value;
-    const email = localStorage.getItem("userEmail");
-    
-    // en check ifall konto e inloggat
-    if (!golfId || !password) {
-        alert("Fyll i lösenord och var inloggad");
-        return;
-    }
-    
-    const data = {
-        course,
-        date,
-        from,
-        to,
-        golfId,
-        password,
-        email
-    };
-    
-    await fetch("https://teepilot-server.onrender.com/start", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify(data)
+    flatpickr("#datePicker", {
+            dateFormat: "Y-m-d",
+            minDate: "today",
+            disableMobile: "true"
     });
-    
-    document.getElementById("status").innerText =
-        `Bevakning aktiv: ${from} - ${to} (${date})`;
+
+    async function startWatch() {
+        const date = document.getElementById("datePicker").value;
+        const from = document.getElementById("fromTime").value;
+        const to = document.getElementById("toTime").value;
+        const statusEl = document.getElementById("status");
+        
+        // Hämta sparade uppgifter från localStorage (från konto.html)
+        const golfId = localStorage.getItem("userGolfId");
+        const password = localStorage.getItem("userPassword");
+        const email = localStorage.getItem("userEmail");
+        
+        // Validering
+        if (!date || !from || !to) {
+            alert("Vänligen fyll i datum och tidsintervall.");
+            return;
+        }
+
+        if (!golfId || !password) {
+            alert("Du måste vara inloggad på 'Konto'-sidan för att starta bevakning.");
+            return;
+        }
+        
+        statusEl.innerText = "Startar bevakning på Vasatorp TC...";
+        
+        const data = {
+            date,
+            from: parseInt(from),
+            to: parseInt(to),
+            golfId,
+            password,
+            email
+        };
+        
+        try {
+            const response = await fetch("https://teepilot-server.onrender.com/start", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data)
+            });
+
+            if (response.ok) {
+                statusEl.innerText = `Aktiv bevakning: Vasatorp TC | ${date} | kl ${from}-${to}`;
+            } else {
+                statusEl.innerText = "Kunde inte starta. Kontrollera dina uppgifter.";
+            }
+        } catch (err) {
+            console.error("Fel:", err);
+            statusEl.innerText = "Anslutningsfel till servern.";
+        }
     }
-    
-    
+
     async function stopWatch() {
-    
-        await fetch("https://teepilot-server.onrender.com/stop", {
-            method: "POST"
-        });
-    
-        document.getElementById("status").innerText =
-            "Bevakning stoppad.";
+        const statusEl = document.getElementById("status");
+        try {
+            const response = await fetch("https://teepilot-server.onrender.com/stop", { 
+                method: "POST" 
+            });
+            if (response.ok) {
+                statusEl.innerText = "Bevakning stoppad.";
+            }
+        } catch (err) {
+            console.error("Kunde inte stoppa:", err);
+        }
     }
-    
-    
+
     async function updateStatus() {
-    
-    try {
-        const res = await fetch("https://teepilot-server.onrender.com/status");
-        const data = await res.json();
-    
-        document.getElementById("status").innerText = data.status;
-    
-    } catch (err) {
-        console.log("Kunde inte hämta status");
+        const statusEl = document.getElementById("status");
+        try {
+            const res = await fetch("https://teepilot-server.onrender.com/status");
+            if (res.ok) {
+                const data = await res.json();
+                statusEl.innerText = data.status;
+            }
+        } catch (err) {
+            statusEl.innerText = "Kunde inte nå servern.";
+        }
     }
-    }
-    
-    setInterval(updateStatus, 5000);
-    updateStatus();
+
+    // Uppdatera status automatiskt var 10:e sekund
+    setInterval(updateStatus, 10000);
+    window.onload = updateStatus;
     
     </script>
 </body>

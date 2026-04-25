@@ -2,7 +2,5 @@ services:
   - type: web
     name: teepilot-server
     env: node
-    buildCommand: |
-      npm install
-      npx puppeteer browsers install chrome
+    buildCommand: npm install
     startCommand: node server.js
