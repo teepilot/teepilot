@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 <!DOCTYPE html>
 <html lang="sv">
 <head>
@@ -227,64 +226,38 @@ button:hover {
 </footer>
 
 <script>
-
-flatpickr("#datePicker", {
-    minDate: "today",
-    dateFormat: "Y-m-d",
-    disableMobile: true
-});
-
-const fromPicker = flatpickr("#timeFrom", {
-    enableTime: true,
-    noCalendar: true,
-    dateFormat: "H:i",
-    time_24hr: true,
-    minuteIncrement: 10,
-    onChange: function(selectedDates, dateStr) {
-        toPicker.set("minTime", dateStr);
-    }
-});
-
-const toPicker = flatpickr("#timeTo", {
-    enableTime: true,
-    noCalendar: true,
-    dateFormat: "H:i",
-    time_24hr: true,
-    minuteIncrement: 10
-});
-
-</script>
-<script>
     
+    // 1. Initiera kalendern för datumval
     flatpickr("#datePicker", {
-            dateFormat: "Y-m-d",
-            minDate: "today",
-            disableMobile: "true"
+        minDate: "today",
+        dateFormat: "Y-m-d",
+        disableMobile: true
     });
 
+    // 2. Funktion för att starta bevakningen
     async function startWatch() {
         const date = document.getElementById("datePicker").value;
-        const from = document.getElementById("fromTime").value;
-        const to = document.getElementById("toTime").value;
+        const from = document.getElementById("fromTime").value; // Hämtar värde från <select id="fromTime">
+        const to = document.getElementById("toTime").value;     // Hämtar värde från <select id="toTime">
         const statusEl = document.getElementById("status");
         
-        // Hämta sparade uppgifter från localStorage (från konto.html)
+        // Hämta sparade uppgifter från localStorage (sparades på konto.html)
         const golfId = localStorage.getItem("userGolfId");
         const password = localStorage.getItem("userPassword");
         const email = localStorage.getItem("userEmail");
         
-        // Validering
+        // Enkel kontroll att allt är ifyllt
         if (!date || !from || !to) {
-            alert("Vänligen fyll i datum och tidsintervall.");
+            alert("Vänligen välj både datum och tidsintervall.");
             return;
         }
 
         if (!golfId || !password) {
-            alert("Du måste vara inloggad på 'Konto'-sidan för att starta bevakning.");
+            alert("Inloggningsuppgifter saknas. Gå till 'Konto' och se till att du är inloggad först.");
             return;
         }
         
-        statusEl.innerText = "Startar bevakning på Vasatorp TC...";
+        statusEl.innerText = "Kontaktar servern...";
         
         const data = {
             date,
@@ -303,16 +276,17 @@ const toPicker = flatpickr("#timeTo", {
             });
 
             if (response.ok) {
-                statusEl.innerText = `Aktiv bevakning: Vasatorp TC | ${date} | kl ${from}-${to}`;
+                statusEl.innerText = `Bevakning aktiv: Vasatorp TC | ${date} | kl ${from}-${to}`;
             } else {
-                statusEl.innerText = "Kunde inte starta. Kontrollera dina uppgifter.";
+                statusEl.innerText = "Servern kunde inte starta bevakningen. Kontrollera dina uppgifter.";
             }
         } catch (err) {
-            console.error("Fel:", err);
-            statusEl.innerText = "Anslutningsfel till servern.";
+            console.error("Fel vid anrop:", err);
+            statusEl.innerText = "Kunde inte ansluta till servern. Kontrollera att den körs på Render.";
         }
     }
 
+    // 3. Funktion för att stoppa bevakningen
     async function stopWatch() {
         const statusEl = document.getElementById("status");
         try {
@@ -327,6 +301,7 @@ const toPicker = flatpickr("#timeTo", {
         }
     }
 
+    // 4. Funktion för att hämta aktuell status från servern
     async function updateStatus() {
         const statusEl = document.getElementById("status");
         try {
@@ -336,13 +311,16 @@ const toPicker = flatpickr("#timeTo", {
                 statusEl.innerText = data.status;
             }
         } catch (err) {
-            statusEl.innerText = "Kunde inte nå servern.";
+            // Om servern är avstängd eller sover (Render gratis-plan)
+            if (statusEl.innerText !== "Bevakning stoppad.") {
+                statusEl.innerText = "Servern sover eller är offline...";
+            }
         }
     }
 
-    // Uppdatera status automatiskt var 10:e sekund
-    setInterval(updateStatus, 10000);
+    // Starta statusuppdatering direkt och kör sedan var 10:e sekund
     window.onload = updateStatus;
+    setInterval(updateStatus, 10000);
     
     </script>
 </body>

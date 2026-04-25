@@ -380,51 +380,37 @@
     });
     
     
-    // Visa ens profil
-    function showProfile(user) {
-        const authBox = document.getElementById("authBox");
-        const profileBox = document.getElementById("profileBox");
-        const profileName = document.getElementById("profileName");
-        const profileEmail = document.getElementById("profileEmail");
-        const profilePhone = document.getElementById("profilePhone");
-        const profileGolfId = document.getElementById("profileGolfId");
-        const profileInitials = document.getElementById("profileInitials");
+// Hitta din befintliga showProfile-funktion och ersätt den med denna:
+function showProfile(user) {
+  const authBox = document.getElementById("authBox");
+  const profileBox = document.getElementById("profileBox");
+  const profileName = document.getElementById("profileName");
+  const profileEmail = document.getElementById("profileEmail");
+  const profilePhone = document.getElementById("profilePhone");
+  const profileGolfId = document.getElementById("profileGolfId");
+  const profileInitials = document.getElementById("profileInitials");
 
-        authBox.style.display = "none";
-        profileBox.style.display = "block";
+  authBox.style.display = "none";
+  profileBox.style.display = "block";
 
-        profileName.innerText = "NAMN: " + user.name;
-        profileEmail.innerText = "E-POST: " + user.email;
-        profilePhone.innerText = "TELEFON: " + user.phone;
-        profileGolfId.innerText = "GOLF-ID: " + user.golfId;
-        
-        // SPARA DATA FÖR TJÄNSTER:
-        // Vi sparar lösenordet här så att tjanster.html kan skicka det till servern
-        localStorage.setItem("userPhone", user.phone);
-        localStorage.setItem("userEmail", user.email);
-        localStorage.setItem("userGolfId", user.golfId);
-        localStorage.setItem("userPassword", user.password); 
-        
-        const initials = user.name
-          .split(" ")
-          .map(n => n[0])
-          .join("");
-        profileInitials.innerText = initials;
-      }
-
-      // Auto-inloggning vid sidladdning
-      onAuthStateChanged(auth, async (user) => {
-        if (user) {
-          const docRef = doc(db, "users", user.uid);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            showProfile(docSnap.data());
-          }
-        } else {
-          document.getElementById("authBox").style.display = "block";
-          document.getElementById("profileBox").style.display = "none";
-        }
-      });
+  profileName.innerText = "NAMN: " + user.name;
+  profileEmail.innerText = "E-POST: " + user.email;
+  profilePhone.innerText = "TELEFON: " + user.phone;
+  profileGolfId.innerText = "GOLF-ID: " + user.golfId;
+  
+  // --- VIKTIGASTE DELEN ---
+  // Spara all info så att Tjänster-sidan kan hämta det
+  localStorage.setItem("userPhone", user.phone);
+  localStorage.setItem("userEmail", user.email);
+  localStorage.setItem("userGolfId", user.golfId);
+  localStorage.setItem("userPassword", user.password); // Detta saknades troligen!
+  
+  const initials = user.name
+    .split(" ")
+    .map(n => n[0])
+    .join("");
+  profileInitials.innerText = initials;
+}
     </script>
     
 
