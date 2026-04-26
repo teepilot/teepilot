@@ -36,21 +36,20 @@ async function checkTimes() {
         console.log(`\n--- [${new Date().toLocaleTimeString('sv-SE')}] SKANNING STARTAR ---`);
         const { golfId, password, date, from, to, email } = watchConfig;
 
-        // Töm cookies för att säkerställa en fräsch session
         await jar.removeAllCookies();
 
-        // 1. Logga in på MinGolf
+        // 1. Logga in
         await client.post("/login/api/Users/Login", {
             GolfId: golfId,
             Password: password
         }, {
             headers: { 
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36',
                 'Referer': 'https://mingolf.golf.se/login/'
             }
         });
 
-        // 2. Hämta schemat för Vasatorp TC
+        // 2. Hämta SCHEMA
         const VASATORP_CLUB_ID = "f2cb0f19-558d-4029-8dc6-0d3340c6eb1a";
         const TOURNAMENT_COURSE_ID = "0abbcc77-25a8-4167-83c7-bbf43d6e863c";
 
@@ -58,7 +57,6 @@ async function checkTimes() {
             params: { courseId: TOURNAMENT_COURSE_ID, date: date }
         });
 
-        // Hantera olika format på API-svaret
         let allSlots = Array.isArray(scheduleRes.data) ? scheduleRes.data : (scheduleRes.data?.slots || []);
         const availableSlots = [];
 
@@ -67,7 +65,7 @@ async function checkTimes() {
             if (!slot.time || !slot.availablity) return;
 
             // Tidsformat från API: "2026-05-06T09:00:00Z" (UTC)
-            const timePart = slot.time.split("T")[1]; // "09:00:00Z"
+            const timePart = slot.time.split("T")[1]; 
             const utcHour = parseInt(timePart.split(":")[0], 10);
             
             // JUSTERING: +2 timmar för Svensk Sommartid (UTC+2)
@@ -75,52 +73,57 @@ async function checkTimes() {
             const targetFrom = parseInt(from, 10);
             const targetTo = parseInt(to, 10);
 
+            // Kolla om tiden är inom ditt valda intervall
             if (slotHourSwe >= targetFrom && slotHourSwe <= targetTo) {
                 const isBookable = slot.availablity.bookable;
                 const availableSpaces = slot.availablity.availableSlots;
                 const isLocked = slot.isLocked;
 
-                // Skapa en snygg tidsstämpel för logg och mail
                 const minutes = timePart.split(":")[1];
                 const displayTimeSwe = `${slotHourSwe.toString().padStart(2, '0')}:${minutes}`;
 
-                console.log(`Kontroll: ${displayTimeSwe} | Lediga: ${availableSpaces} | Bokningsbar: ${isBookable}`);
-
-                // Krav: Måste vara bokningsbar, inte låst och ha minst 1 plats ledig
-                if (isBookable && !isLocked && availableSpaces > 0) {
+                // --- STRIKT FILTRERING: BARA 4 PLATSER ---
+                if (isBookable && !isLocked && availableSpaces === 4) {
+                    console.log(`KONTROLL: ${displayTimeSwe} har 4 lediga platser - SPARAR!`);
                     availableSlots.push(displayTimeSwe);
+                } else {
+                    // Logga tider som hoppas över så du ser varför i Render-loggen
+                    if (availableSpaces > 0 && availableSpaces < 4) {
+                        console.log(`HOPPAR ÖVER: ${displayTimeSwe} (Endast ${availableSpaces} platser lediga)`);
+                    }
                 }
             }
         });
 
         if (availableSlots.length > 0) {
             const timeList = availableSlots.join(", ");
-            console.log(`MATCH HITTAD: ${timeList}`);
+            
+            // LOGG: Visa vilken mail mailet skickas till
+            console.log(`FÖRSÖKER SKICKA MAIL TILL: ${email}`);
+            console.log(`MATCHADE TIDER (4 platser): ${timeList}`);
 
-            await resend.emails.send({
-                from: "TeePilot <onboarding@resend.dev>",
-                to: email,
-                subject: `Tid hittad på Vasatorp! (${date})`,
-                html: `
-                    <div style="font-family: sans-serif; background: #f4f4f4; padding: 20px;">
-                        <h2>TeePilot har hittat lediga tider!</h2>
-                        <p>Följande tider är nu tillgängliga på <b>Tournament Course</b> den ${date}:</p>
-                        <p style="font-size: 18px; color: #2e7d32;"><b>${timeList}</b></p>
-                        <p>Skynda dig in på MinGolf och boka!</p>
-                    </div>
-                `
-            });
+            try {
+                const mailResponse = await resend.emails.send({
+                    from: "TeePilot <onboarding@resend.dev>",
+                    to: email,
+                    subject: `Tider med 4 platser hittade! (${date})`,
+                    html: `<h3>Lediga fyrbollar hittade!</h3><p>Följande tider har 4 lediga platser den ${date}: <b>${timeList}</b></p>`
+                });
+                console.log("Resend API svar:", mailResponse);
+            } catch (mailErr) {
+                console.error("Kunde inte skicka mail via Resend:", mailErr.message);
+            }
 
-            status = `Match funnen! Mail skickat för: ${timeList}`;
-            stopEverything(); // Stoppar bevakningen efter träff
+            status = `Match funnen! Mail skickat till ${email} för: ${timeList}`;
+            stopEverything();
         } else {
-            status = `Sökt ${new Date().toLocaleTimeString('sv-SE')}: Inga lediga tider mellan ${from}-${to}`;
+            status = `Sökt ${new Date().toLocaleTimeString('sv-SE')}: Inga lediga 4-bollar mellan ${from}-${to}`;
             console.log(status);
         }
 
     } catch (err) {
         console.error("Fel vid sökning:", err.message);
-        status = "Kunde inte ansluta till MinGolf. Försöker igen om 5 min.";
+        status = "Kunde inte ansluta till MinGolf.";
     } finally {
         isSearching = false;
     }
