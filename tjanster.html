@@ -113,6 +113,28 @@ button:hover {
     .hero h1 { font-size: 36px; }
 }
 </style>
+<style>
+    /* Uppdatera media queryn i tjanster.html */
+    @media (max-width: 768px) {
+        .service-content {
+            padding: 40px 15px;
+        }
+    
+        .service-container {
+            padding: 30px 20px;
+        }
+    
+        .service-container h2 {
+            font-size: 18px;
+        }
+    
+        /* Stapla Från/Till tid vertikalt på mobil */
+        div[style*="display: flex"] {
+            flex-direction: column;
+            gap: 0 !important;
+        }
+    }
+    </style>
 </head>
 <body>
 
