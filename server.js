@@ -35,11 +35,10 @@ async function checkTimes() {
         console.log(`--- [${new Date().toLocaleTimeString()}] API-sökning startar ---`);
         const { golfId, password, date, from, to, email } = watchConfig;
 
-        // Töm gamla cookies inför ny sökning för att vara säker på fräsch session
         await jar.removeAllCookies();
 
-        // 1. GENOMFÖR INLOGGNING
-        const loginResponse = await client.post("/login/api/Users/Login", {
+        // 1. Logga in
+        await client.post("/login/api/Users/Login", {
             GolfId: golfId,
             Password: password
         }, {
@@ -52,32 +51,40 @@ async function checkTimes() {
         });
 
         console.log("Inloggning lyckades");
-
-        // En liten paus så att MinGolf hinner registrera sessionen
         await new Promise(r => setTimeout(r, 2000));
 
-        // 2. HÄMTA SCHEMA (Vasatorp TC)
+        // 2. Hämta SCHEMA
         const VASATORP_CLUB_ID = "f2cb0f19-558d-4029-8dc6-0d3340c6eb1a";
         const TOURNAMENT_COURSE_ID = "0abbcc77-25a8-4167-83c7-bbf43d6e863c";
 
         const scheduleRes = await client.get(`/bokning/api/Clubs/${VASATORP_CLUB_ID}/CourseSchedule`, {
-            params: {
-                courseId: TOURNAMENT_COURSE_ID,
-                date: date
-            },
+            params: { courseId: TOURNAMENT_COURSE_ID, date: date },
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Referer': 'https://mingolf.golf.se/bokning/'
             }
         });
 
-        const allSlots = scheduleRes.data;
+        // --- KORRIGERING HÄR ---
+        // Vi säkerställer att vi har en array att filtrera på
+        let allSlots = [];
+        if (Array.isArray(scheduleRes.data)) {
+            allSlots = scheduleRes.data;
+        } else if (scheduleRes.data && Array.isArray(scheduleRes.data.slots)) {
+            allSlots = scheduleRes.data.slots;
+        } else if (scheduleRes.data && Array.isArray(scheduleRes.data.items)) {
+            allSlots = scheduleRes.data.items;
+        }
+
         console.log(`Hämtade ${allSlots.length} tider.`);
 
-        // 3. FILTRERA LEDIGA TIDER
+        // 3. Filtrera tider
         const availableSlots = allSlots.filter(slot => {
+            if (!slot.time) return false;
             const timeHour = parseInt(slot.time.split(":")[0]);
-            return slot.isBookable && timeHour >= from && timeHour <= to;
+            // Vi kollar både .isBookable och .status
+            const isAvailable = slot.isBookable || slot.status === "Available";
+            return isAvailable && timeHour >= from && timeHour <= to;
         });
 
         if (availableSlots.length > 0) {
@@ -88,23 +95,19 @@ async function checkTimes() {
                 from: "TeePilot <onboarding@resend.dev>",
                 to: email,
                 subject: "Tid hittad på Vasatorp!",
-                html: `<h1>Tider hittade!</h1><p>Följande tider är lediga på Tournament Course den ${date}: <strong>${timeList}</strong></p>`
+                html: `<h1>Tid hittad!</h1><p>Lediga tider på Tournament Course den ${date}: <strong>${timeList}</strong></p>`
             });
 
-            status = `Match funnen! Mail skickat för tider: ${timeList}`;
+            status = `Match funnen! Mail skickat för: ${timeList}`;
             stopEverything();
         } else {
-            status = `Sökt ${new Date().toLocaleTimeString()}: Inga lediga tider hittade.`;
+            status = `Sökt ${new Date().toLocaleTimeString()}: Inga lediga tider mellan ${from}-${to}`;
             console.log(status);
         }
 
     } catch (err) {
-        console.error("Fel vid sökning:", err.response?.status || err.message);
-        if (err.response?.status === 401) {
-            status = "Sessionen nekades (401). Kontrollera Golf-ID och lösenord.";
-        } else {
-            status = "Kunde inte hämta tider just nu. Försöker igen snart...";
-        }
+        console.error("Fel vid sökning:", err.message);
+        status = "Kunde inte hämta tider just nu. Försöker igen om 5 min.";
     } finally {
         isSearching = false;
     }
