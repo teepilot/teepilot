@@ -79,11 +79,24 @@ async function checkTimes() {
         console.log(`Hämtade ${allSlots.length} tider.`);
 
         // 3. Filtrera tider
+        console.log("Analyserar tillgänglighet...");
+        
         const availableSlots = allSlots.filter(slot => {
             if (!slot.time) return false;
+            
             const timeHour = parseInt(slot.time.split(":")[0]);
-            // Vi kollar både .isBookable och .status
-            const isAvailable = slot.isBookable || slot.status === "Available";
+            
+            // Kolla olika flaggor som MinGolf använder för att visa att en tid är ledig
+            // status 0 brukar betyda "Ledig" i vissa versioner av API:et
+            const isAvailable = slot.isBookable === true || 
+                                slot.status === "Available" || 
+                                slot.status === 0;
+
+            // Logga bara tider inom ditt intervall för att felsöka
+            if (timeHour >= from && timeHour <= to) {
+                console.log(`Tid: ${slot.time} | Bokningsbar: ${slot.isBookable} | Status: ${slot.status}`);
+            }
+
             return isAvailable && timeHour >= from && timeHour <= to;
         });
 
