@@ -78,8 +78,7 @@ async function checkTimes() {
 
         console.log(`Hämtade ${allSlots.length} tider.`);
 
-        // 3. Filtrera tider
-        // 3. Filtrera tider
+        // 3. Filtrera tider (Aggressiv sökning)
         console.log("Analyserar tillgänglighet...");
                 
         const availableSlots = allSlots.filter(slot => {
@@ -87,20 +86,20 @@ async function checkTimes() {
             
             const timeHour = parseInt(slot.time.split(":")[0]);
             
-            // Kolla alla möjliga kombinationer som indikerar en ledig tid
-            // Vi lägger till slot.isAvailable och kollar om status är null/0/Available
-            const isAvailable = slot.isBookable === true || 
-                                slot.isAvailable === true ||
-                                slot.status === "Available" || 
-                                slot.status === 0 ||
-                                slot.status === null; // Ibland är status null för lediga tider
+            // Vi kollar på hur många som är inbokade i bollen. 
+            // Om 'maxPlayers' är 4 och 'playersBooked' är mindre än 4, så finns det plats!
+            const hasSpace = slot.maxPlayers > (slot.playersBooked || 0);
+            
+            // Vi kollar också om statusen INTE är "Blocked" eller "Occupied"
+            const isNotBlocked = slot.status !== "Blocked" && slot.status !== "Occupied";
 
-            // Logga tiderna i terminalen så vi ser varför de nekas
+            // Logga för att se vad som händer
             if (timeHour >= from && timeHour <= to) {
-                console.log(`Tid: ${slot.time} | Bookable: ${slot.isBookable} | Available: ${slot.isAvailable} | Status: ${slot.status}`);
+                console.log(`Tid: ${slot.time} | Lediga platser: ${slot.maxPlayers - slot.playersBooked} | Status: ${slot.status} | Bookable: ${slot.isBookable}`);
             }
 
-            return isAvailable && timeHour >= from && timeHour <= to;
+            // Vi returnerar sant om det finns plats, statusen är ok och det är rätt timme
+            return hasSpace && isNotBlocked && timeHour >= from && timeHour <= to;
         });
 
         if (availableSlots.length > 0) {
