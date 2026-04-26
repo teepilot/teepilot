@@ -32,88 +32,66 @@ async function checkTimes() {
     isSearching = true;
 
     try {
-        console.log(`--- [${new Date().toLocaleTimeString()}] API-sökning startar ---`);
+        console.log(`--- [${new Date().toLocaleTimeString()}] DIAGNOS-SÖKNING STARTAR ---`);
         const { golfId, password, date, from, to, email } = watchConfig;
 
         await jar.removeAllCookies();
 
-        // 1. Logga in
         await client.post("/login/api/Users/Login", {
-            GolfId: golfId,
-            Password: password
+            GolfId: golfId, Password: password
         }, {
-            headers: {
-                'Content-Type': 'application/json',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Origin': 'https://mingolf.golf.se',
-                'Referer': 'https://mingolf.golf.se/login/'
-            }
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0' }
         });
 
-        console.log("Inloggning lyckades");
-        await new Promise(r => setTimeout(r, 2000));
-
-        // 2. Hämta SCHEMA
         const VASATORP_CLUB_ID = "f2cb0f19-558d-4029-8dc6-0d3340c6eb1a";
         const TOURNAMENT_COURSE_ID = "0abbcc77-25a8-4167-83c7-bbf43d6e863c";
 
         const scheduleRes = await client.get(`/bokning/api/Clubs/${VASATORP_CLUB_ID}/CourseSchedule`, {
-            params: { courseId: TOURNAMENT_COURSE_ID, date: date },
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Referer': 'https://mingolf.golf.se/bokning/'
-            }
+            params: { courseId: TOURNAMENT_COURSE_ID, date: date }
         });
 
-        // --- KORRIGERING HÄR ---
-        // Vi säkerställer att vi har en array att filtrera på
         let allSlots = [];
-        if (Array.isArray(scheduleRes.data)) {
-            allSlots = scheduleRes.data;
-        } else if (scheduleRes.data && Array.isArray(scheduleRes.data.slots)) {
-            allSlots = scheduleRes.data.slots;
-        } else if (scheduleRes.data && Array.isArray(scheduleRes.data.items)) {
-            allSlots = scheduleRes.data.items;
+        if (Array.isArray(scheduleRes.data)) allSlots = scheduleRes.data;
+        else if (scheduleRes.data?.slots) allSlots = scheduleRes.data.slots;
+
+        console.log(`Totalt antal tider mottagna: ${allSlots.length}`);
+
+        // --- DIAGNOS: LOGGA DE FÖRSTA 3 TIDERNA FÖR ATT SE STRUKTUREN ---
+        if (allSlots.length > 0) {
+            console.log("EXEMPEL PÅ DATA FRÅN MINGOLF:");
+            console.log(JSON.stringify(allSlots.slice(0, 3), null, 2)); 
         }
 
-        console.log(`Hämtade ${allSlots.length} tider.`);
-
-        // 3. Filtrera tider (Aggressiv sökning)
-        console.log("Analyserar tillgänglighet...");
-                
         const availableSlots = allSlots.filter(slot => {
-            if (!slot.time) return false;
-            
-            const timeHour = parseInt(slot.time.split(":")[0]);
-            
-            // Vi kollar på hur många som är inbokade i bollen. 
-            // Om 'maxPlayers' är 4 och 'playersBooked' är mindre än 4, så finns det plats!
-            const hasSpace = slot.maxPlayers > (slot.playersBooked || 0);
-            
-            // Vi kollar också om statusen INTE är "Blocked" eller "Occupied"
-            const isNotBlocked = slot.status !== "Blocked" && slot.status !== "Occupied";
+            const timeHour = parseInt(slot.time?.split(":")[0]);
+            if (isNaN(timeHour)) return false;
 
-            // Logga för att se vad som händer
-            if (timeHour >= from && timeHour <= to) {
-                console.log(`Tid: ${slot.time} | Lediga platser: ${slot.maxPlayers - slot.playersBooked} | Status: ${slot.status} | Bookable: ${slot.isBookable}`);
+            // Vi kollar tidspannet
+            const isInTimeRange = timeHour >= from && timeHour <= to;
+            
+            // Kolla om bollen inte är full (här kollar vi på 'isFull' eller 'playersBooked')
+            // Vi tillåter allt som inte är markerat som "Stängt" eller "Fullt"
+            const looksAvailable = slot.isBookable === true || 
+                                   slot.status === "Available" || 
+                                   (slot.maxPlayers > (slot.playersBooked || 0) && slot.status !== "Blocked");
+
+            if (isInTimeRange) {
+                console.log(`Analys -> Tid: ${slot.time} | Status: ${slot.status} | Bookable: ${slot.isBookable} | Platser: ${slot.playersBooked}/${slot.maxPlayers}`);
             }
 
-            // Vi returnerar sant om det finns plats, statusen är ok och det är rätt timme
-            return hasSpace && isNotBlocked && timeHour >= from && timeHour <= to;
+            return isInTimeRange && looksAvailable;
         });
 
         if (availableSlots.length > 0) {
             const timeList = availableSlots.map(s => s.time).join(", ");
-            console.log(`MATCH HITTAD: ${timeList}`);
-
+            console.log("MATCH HITTAD!");
             await resend.emails.send({
                 from: "TeePilot <onboarding@resend.dev>",
                 to: email,
-                subject: "Tid hittad på Vasatorp!",
-                html: `<h1>Tid hittad!</h1><p>Lediga tider på Tournament Course den ${date}: <strong>${timeList}</strong></p>`
+                subject: "Tid hittad!",
+                html: `Lediga tider: ${timeList}`
             });
-
-            status = `Match funnen! Mail skickat för: ${timeList}`;
+            status = `Match funnen: ${timeList}`;
             stopEverything();
         } else {
             status = `Sökt ${new Date().toLocaleTimeString()}: Inga lediga tider mellan ${from}-${to}`;
@@ -121,8 +99,8 @@ async function checkTimes() {
         }
 
     } catch (err) {
-        console.error("Fel vid sökning:", err.message);
-        status = "Kunde inte hämta tider just nu. Försöker igen om 5 min.";
+        console.error("DIAGNOS-FEL:", err.message);
+        status = "Fel vid sökning. Se logg.";
     } finally {
         isSearching = false;
     }
