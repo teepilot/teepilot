@@ -33,7 +33,7 @@ async function checkTimes() {
 
     try {
         console.log(`\n=================================================`);
-        console.log(`--- [${new Date().toLocaleTimeString()}] DIAGNOS-SKANNING ---`);
+        console.log(`--- [${new Date().toLocaleTimeString()}] TOTAL DIAGNOS ---`);
         const { golfId, password, date, from, to, email } = watchConfig;
 
         await jar.removeAllCookies();
@@ -46,7 +46,6 @@ async function checkTimes() {
         });
 
         console.log("Inloggning lyckades");
-        await new Promise(r => setTimeout(r, 2000));
 
         // 2. Hämta SCHEMA
         const VASATORP_CLUB_ID = "f2cb0f19-558d-4029-8dc6-0d3340c6eb1a";
@@ -56,74 +55,69 @@ async function checkTimes() {
             params: { courseId: TOURNAMENT_COURSE_ID, date: date }
         });
 
-        let allSlots = [];
-        if (Array.isArray(scheduleRes.data)) allSlots = scheduleRes.data;
-        else if (scheduleRes.data?.slots) allSlots = scheduleRes.data.slots;
-
-        console.log(`Totalt antal tider från API: ${allSlots.length}`);
+        // --- VIKTIGT: SE HUR DATAN SER UT ---
+        console.log("Rådata-typ:", typeof scheduleRes.data);
         
+        // Vi försöker hitta listan med tider oavsett vad den heter
+        let allSlots = [];
+        if (Array.isArray(scheduleRes.data)) {
+            allSlots = scheduleRes.data;
+        } else {
+            // Om det är ett objekt, leta efter vanliga list-namn
+            allSlots = scheduleRes.data.slots || scheduleRes.data.items || scheduleRes.data.bookings || [];
+        }
+
+        console.log(`Antal objekt i listan: ${allSlots.length}`);
+
+        if (allSlots.length > 0) {
+            // Vi loggar precis allt i det första objektet för att se fältnamnen
+            console.log("Fältnamn i första tidsobjektet:", Object.keys(allSlots[0]));
+            console.log("Exempel på innehåll (första tiden):", JSON.stringify(allSlots[0]));
+        }
+
         const availableSlots = [];
         const targetFrom = parseInt(from, 10);
         const targetTo = parseInt(to, 10);
 
-        console.log(`Letar mellan kl: ${targetFrom} och ${targetTo}`);
+        // 3. Den "smarta" loopen
+        for (const slot of allSlots) {
+            // MinGolf kan använda 'time', 'startTime' eller 'start'
+            const timeStr = slot.time || slot.startTime || slot.start;
+            if (!timeStr) continue;
 
-        // 3. Gå igenom VARJE tid
-        allSlots.forEach(slot => {
-            if (!slot.time) return;
-
-            // Extrahera timmen (hanterar både "09:10" och "9:10")
-            const slotHour = parseInt(slot.time.split(":")[0], 10);
+            const slotHour = parseInt(timeStr.split(/[:T ]/)[1] || timeStr.split(":")[0], 10);
             
-            // LOGGA ABSOLUT ALLT inom intervallet för diagnos
             if (slotHour >= targetFrom && slotHour <= targetTo) {
-                const booked = slot.playersBooked || 0;
-                const max = slot.maxPlayers || 4;
-                const spaceLeft = max - booked;
-                
-                // Denna rad skriver ut exakt vad MinGolf ser i din logg
-                console.log(
-                    `KOLL -> Tid: ${slot.time} | ` +
-                    `Status: ${slot.status} | ` +
-                    `Platser: ${booked}/${max} | ` +
-                    `Bokningsbar: ${slot.isBookable}`
-                );
+                const booked = slot.playersBooked ?? slot.bookedCount ?? 0;
+                const max = slot.maxPlayers ?? 4;
+                const isBookable = slot.isBookable || slot.status === "Available" || slot.status === 0;
 
-                // LOGIK: När ska vi anse att tiden är "hittad"?
-                // Vi kollar om det finns platser kvar OCH om statusen inte är "Occupied" eller "Blocked"
-                const isAvailable = (spaceLeft > 0) && 
-                                    (slot.status === "Available" || slot.status === 0 || slot.status === null) &&
-                                    (slot.status !== "Occupied");
+                console.log(`Tid: ${timeStr} | Status: ${slot.status} | Bokade: ${booked}/${max}`);
 
-                if (isAvailable) {
-                    availableSlots.push(slot);
+                if (booked < max && slot.status !== "Blocked") {
+                    availableSlots.push({ ...slot, time: timeStr });
                 }
             }
-        });
-
-        console.log(`-------------------------------------------------`);
+        }
 
         if (availableSlots.length > 0) {
             const timeList = availableSlots.map(s => s.time).join(", ");
-            console.log(`MATCH FUNNEN: ${timeList}`);
-
+            console.log(`MATCH! Mailar: ${timeList}`);
             await resend.emails.send({
                 from: "TeePilot <onboarding@resend.dev>",
                 to: email,
                 subject: "TeePilot: Tid hittad!",
-                html: `<h2>Tider lediga!</h2><p>Följande tider på Vasatorp TC är lediga: <b>${timeList}</b></p>`
+                html: `Tider: ${timeList}`
             });
-
-            status = `Match funnen! Mail skickat för: ${timeList}`;
+            status = `Match funnen: ${timeList}`;
             stopEverything();
         } else {
-            status = `Sökt ${new Date().toLocaleTimeString()}: Inga lediga platser hittade.`;
-            console.log(status);
+            status = `Sökt ${new Date().toLocaleTimeString()}: Inga lediga hittade i intervallet.`;
         }
 
     } catch (err) {
-        console.error("FEL VID SÖKNING:", err.message);
-        status = "Kunde inte hämta tider. Försöker igen om 5 min.";
+        console.error("KRITISKT FEL:", err.message);
+        status = "Systemfel vid skanning.";
     } finally {
         isSearching = false;
         console.log(`=================================================\n`);
