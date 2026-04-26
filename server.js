@@ -32,11 +32,13 @@ async function checkTimes() {
     isSearching = true;
 
     try {
-        console.log(`--- [${new Date().toLocaleTimeString()}] DIAGNOS-SÖKNING STARTAR ---`);
+        console.log(`\n=================================================`);
+        console.log(`--- [${new Date().toLocaleTimeString()}] FULLSTÄNDIG SKANNING ---`);
         const { golfId, password, date, from, to, email } = watchConfig;
 
         await jar.removeAllCookies();
 
+        // 1. Logga in
         await client.post("/login/api/Users/Login", {
             GolfId: golfId, Password: password
         }, {
@@ -54,55 +56,64 @@ async function checkTimes() {
         if (Array.isArray(scheduleRes.data)) allSlots = scheduleRes.data;
         else if (scheduleRes.data?.slots) allSlots = scheduleRes.data.slots;
 
-        console.log(`Totalt antal tider mottagna: ${allSlots.length}`);
+        console.log(`Hittade totalt ${allSlots.length} tider i schemat.`);
+        console.log(`Visar detaljer för tider mellan kl ${from} och ${to}:`);
+        console.log(`-------------------------------------------------`);
 
-        // --- DIAGNOS: LOGGA DE FÖRSTA 3 TIDERNA FÖR ATT SE STRUKTUREN ---
-        if (allSlots.length > 0) {
-            console.log("EXEMPEL PÅ DATA FRÅN MINGOLF:");
-            console.log(JSON.stringify(allSlots.slice(0, 3), null, 2)); 
-        }
+        const availableSlots = [];
 
-        const availableSlots = allSlots.filter(slot => {
+        allSlots.forEach(slot => {
             const timeHour = parseInt(slot.time?.split(":")[0]);
-            if (isNaN(timeHour)) return false;
-
-            // Vi kollar tidspannet
-            const isInTimeRange = timeHour >= from && timeHour <= to;
             
-            // Kolla om bollen inte är full (här kollar vi på 'isFull' eller 'playersBooked')
-            // Vi tillåter allt som inte är markerat som "Stängt" eller "Fullt"
-            const looksAvailable = slot.isBookable === true || 
-                                   slot.status === "Available" || 
-                                   (slot.maxPlayers > (slot.playersBooked || 0) && slot.status !== "Blocked");
+            // Vi loggar ALLA tider som är inom användarens valda timmar
+            if (timeHour >= from && timeHour <= to) {
+                const booked = slot.playersBooked || 0;
+                const max = slot.maxPlayers || 4;
+                const emptySlots = max - booked;
+                
+                // Logga detaljerad info om varje tid
+                console.log(
+                    `Tid: ${slot.time} | ` +
+                    `Status: ${slot.status} | ` +
+                    `Bokade: ${booked}/${max} | ` +
+                    `Lediga: ${emptySlots} | ` +
+                    `Bokningsbar: ${slot.isBookable}`
+                );
 
-            if (isInTimeRange) {
-                console.log(`Analys -> Tid: ${slot.time} | Status: ${slot.status} | Bookable: ${slot.isBookable} | Platser: ${slot.playersBooked}/${slot.maxPlayers}`);
+                // Logik för att faktiskt spara ner tiden som "hittad"
+                // En tid räknas som hittad om det finns minst 1 ledig plats och den inte är "Blocked"
+                if (emptySlots > 0 && slot.status !== "Blocked" && slot.status !== "Occupied") {
+                    availableSlots.push(slot);
+                }
             }
-
-            return isInTimeRange && looksAvailable;
         });
+
+        console.log(`-------------------------------------------------`);
 
         if (availableSlots.length > 0) {
             const timeList = availableSlots.map(s => s.time).join(", ");
-            console.log("MATCH HITTAD!");
+            console.log(`MATCH HITTAD: ${timeList}`);
+
             await resend.emails.send({
                 from: "TeePilot <onboarding@resend.dev>",
                 to: email,
-                subject: "Tid hittad!",
-                html: `Lediga tider: ${timeList}`
+                subject: "Tid hittad på Vasatorp!",
+                html: `<h3>Lediga tider hittade!</h3><p>Datum: ${date}<br>Tider: <b>${timeList}</b></p>`
             });
-            status = `Match funnen: ${timeList}`;
+
+            status = `Match funnen! Mail skickat för: ${timeList}`;
             stopEverything();
         } else {
-            status = `Sökt ${new Date().toLocaleTimeString()}: Inga lediga tider mellan ${from}-${to}`;
+            status = `Sökt ${new Date().toLocaleTimeString()}: Inga lediga platser just nu.`;
             console.log(status);
         }
 
     } catch (err) {
-        console.error("DIAGNOS-FEL:", err.message);
-        status = "Fel vid sökning. Se logg.";
+        console.error("FEL VID SÖKNING:", err.message);
+        status = "Servern stötte på ett problem. Försöker igen om 5 min.";
     } finally {
         isSearching = false;
+        console.log(`=================================================\n`);
     }
 }
 
