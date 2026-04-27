@@ -4,14 +4,12 @@ const cron = require("node-cron");
 const axios = require("axios");
 const { wrapper } = require("axios-cookiejar-support");
 const { CookieJar } = require("tough-cookie");
+const { Resend } = require("resend");
 
+const resend = new Resend("re_LHA5wWw6_86BChTR6dCeieuj3W9y3z85U");
 const app = express();
 app.use(cors());
 app.use(express.json());
-
-// --- KONFIGURATION ---
-const TELEGRAM_TOKEN = "DIN_BOT_TOKEN_HÄR"; // Fås från @BotFather
-const VASATORP_CLUB_ID = "f2cb0f19-558d-4029-8dc6-0d3340c6eb1a";
 
 const jar = new CookieJar();
 const client = wrapper(axios.create({ 
@@ -25,24 +23,11 @@ let watchConfig = null;
 let status = "Ingen aktiv bevakning";
 let isSearching = false;
 
-// Status-endpoints
+// Standard-ID:n för Vasatorp
+const VASATORP_CLUB_ID = "f2cb0f19-558d-4029-8dc6-0d3340c6eb1a";
+
 app.get("/", (req, res) => res.send(`<h1>TeePilot Server Status</h1><p>${status}</p>`));
 app.get("/status", (req, res) => res.json({ status }));
-
-// Funktion för att skicka Telegram-meddelande
-async function sendTelegram(chatId, text) {
-    const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
-    try {
-        await axios.post(url, {
-            chat_id: chatId,
-            text: text,
-            parse_mode: "HTML"
-        });
-        console.log("Telegram-notis skickad!");
-    } catch (err) {
-        console.error("Telegram Error:", err.response?.data || err.message);
-    }
-}
 
 async function checkTimes() {
     if (!watchConfig || isSearching) return;
@@ -50,7 +35,8 @@ async function checkTimes() {
 
     try {
         console.log(`\n--- [${new Date().toLocaleTimeString('sv-SE')}] SKANNING STARTAR ---`);
-        const { golfId, password, date, from, to, telegramChatId, courseId } = watchConfig;
+        // Nu tar vi även emot courseId från frontend
+        const { golfId, password, date, from, to, email, courseId } = watchConfig;
 
         await jar.removeAllCookies();
 
@@ -65,51 +51,72 @@ async function checkTimes() {
             }
         });
 
-        // 2. Hämta schema
+        // 2. Hämta SCHEMA för vald bana
+        // Om inget courseId skickats med, använd Tournament Course som default
         const targetCourse = courseId || "0abbcc77-25a8-4167-83c7-bbf43d6e863c";
+
         const scheduleRes = await client.get(`/bokning/api/Clubs/${VASATORP_CLUB_ID}/CourseSchedule`, {
             params: { courseId: targetCourse, date: date }
         });
 
         let allSlots = Array.isArray(scheduleRes.data) ? scheduleRes.data : (scheduleRes.data?.slots || []);
-        const foundTimes = [];
+        const availableSlots = [];
 
-        // 3. Analysera tider
+        // 3. Analysera tiderna
         allSlots.forEach(slot => {
             if (!slot.time || !slot.availablity) return;
 
             const timePart = slot.time.split("T")[1]; 
-            const hourSwe = parseInt(timePart.split(":")[0], 10) + 2; // Justering för svensk tid
+            const utcHour = parseInt(timePart.split(":")[0], 10);
             
-            if (hourSwe >= parseInt(from) && hourSwe <= parseInt(to)) {
-                if (slot.availablity.bookable && !slot.isLocked && slot.availablity.availableSlots === 4) {
-                    foundTimes.push(timePart.substring(0, 5));
+            // Hantera tidszon (Sverige Sommartid = UTC+2)
+            const slotHourSwe = utcHour + 2;
+            const targetFrom = parseInt(from, 10);
+            const targetTo = parseInt(to, 10);
+
+            if (slotHourSwe >= targetFrom && slotHourSwe <= targetTo) {
+                const isBookable = slot.availablity.bookable;
+                const availableSpaces = slot.availablity.availableSlots;
+                const isLocked = slot.isLocked;
+
+                const minutes = timePart.split(":")[1];
+                const displayTimeSwe = `${slotHourSwe.toString().padStart(2, '0')}:${minutes}`;
+
+                // Vi söker specifikt efter hela fyrbollar
+                if (isBookable && !isLocked && availableSpaces === 4) {
+                    console.log(`KONTROLL: ${displayTimeSwe} har 4 lediga platser - SPARAR!`);
+                    availableSlots.push(displayTimeSwe);
                 }
             }
         });
 
-        if (foundTimes.length > 0) {
-            const timeList = foundTimes.join(", ");
+        if (availableSlots.length > 0) {
+            const timeList = availableSlots.join(", ");
             const courseName = targetCourse === "aaa98917-7e69-4f2b-8eaf-0ed7956ebf00" ? "Classic Course" : "Tournament Course";
             
-            const message = `🚀 <b>TeePilot: Ledig tid hittad!</b>\n\n` +
-                            `📍 <b>Bana:</b> ${courseName}\n` +
-                            `📅 <b>Datum:</b> ${date}\n` +
-                            `⏰ <b>Tider:</b> ${timeList}\n\n` +
-                            `<i>Skynda dig in på MinGolf och boka!</i>`;
+            console.log(`MATCHADE TIDER: ${timeList} på ${courseName}`);
 
-            await sendTelegram(telegramChatId, message);
+            try {
+                await resend.emails.send({
+                    from: "TeePilot <onboarding@resend.dev>",
+                    to: email,
+                    subject: `Ledig 4-boll på ${courseName}!`,
+                    html: `<h3>Match funnen!</h3><p>Den ${date} finns lediga 4-bollar på <b>${courseName}</b> vid tiderna: <b>${timeList}</b></p>`
+                });
+            } catch (mailErr) {
+                console.error("Mailfel:", mailErr.message);
+            }
 
-            status = `Match funnen! Notis skickad till Telegram för tiderna: ${timeList}`;
+            status = `Match funnen! Mail skickat till ${email} för: ${timeList}`;
             stopEverything();
         } else {
-            status = `Söker... Senast kollad: ${new Date().toLocaleTimeString('sv-SE')}. Inga 4-bollar hittade än.`;
+            status = `Sökt ${new Date().toLocaleTimeString('sv-SE')}: Inga lediga 4-bollar hittade.`;
             console.log(status);
         }
 
     } catch (err) {
         console.error("Fel vid sökning:", err.message);
-        status = "Kunde inte ansluta till MinGolf. Kontrollera inloggningsuppgifter.";
+        status = "Kunde inte ansluta till MinGolf.";
     } finally {
         isSearching = false;
     }
@@ -124,10 +131,12 @@ async function stopEverything() {
 app.post("/start", async (req, res) => {
     await stopEverything();
     watchConfig = req.body;
-    status = `Bevakar ${watchConfig.date} via Telegram...`;
+    status = `Bevakar ${watchConfig.date} på vald bana...`;
     
-    checkTimes(); // Kör direkt
-    job = cron.schedule("*/5 * * * *", checkTimes); // Sedan var 5:e minut
+    checkTimes(); // Starta första skanningen direkt
+    
+    // Skanna var 5:e minut
+    job = cron.schedule("*/5 * * * *", checkTimes);
     res.sendStatus(200);
 });
 
@@ -138,4 +147,4 @@ app.post("/stop", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`TeePilot Server körs på port ${PORT}`));
+app.listen(PORT, () => console.log(`TeePilot Server aktiv på port ${PORT}`));

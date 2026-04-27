@@ -269,35 +269,42 @@ button:hover {
     });
 
     async function startWatch() {
-    const golfId = document.getElementById("golfIdInput").value;
-    const password = document.getElementById("golfPasswordInput").value;
-    const date = document.getElementById("datePicker").value;
-    const from = document.getElementById("fromTime").value;
-    const to = document.getElementById("toTime").value;
-    
-    const telegramChatId = prompt("Ange ditt Telegram Chat ID för att få notiser:");
+        const golfId = document.getElementById("golfIdInput").value;
+        const password = document.getElementById("golfPasswordInput").value;
+        const date = document.getElementById("datePicker").value;
+        const from = document.getElementById("fromTime").value;
+        const to = document.getElementById("toTime").value;
+        const email = localStorage.getItem("userEmail");
+        
+        if (!golfId || !password || !date) {
+            alert("Vänligen fyll i Golf-ID, lösenord och datum.");
+            return;
+        }
 
-    if (!golfId || !password || !telegramChatId) {
-        alert("Fyll i alla uppgifter!");
-        return;
+        document.getElementById("status").innerText = "Kontaktar servern...";
+
+        try {
+            const response = await fetch("https://teepilot-server.onrender.com/start", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    golfId, password, date,
+                    from: parseInt(from),
+                    to: parseInt(to),
+                    email: email || "din-mail@exempel.se"
+                })
+            });
+
+            if (response.ok) {
+                document.getElementById("status").innerText = "Bevakning startad! Vi mailar när en 4-boll blir ledig.";
+            } else {
+                document.getElementById("status").innerText = "Kunde inte starta. Kontrollera dina uppgifter.";
+            }
+        } catch (err) {
+            document.getElementById("status").innerText = "Serverfel. Kontrollera att Render-servern är vaken.";
+        }
     }
 
-    try {
-        await fetch("https://teepilot-server.onrender.com/start", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                golfId, password, date, 
-                from, to, 
-                telegramChatId, // Skickas till servern
-                courseId: "0abbcc77-25a8-4167-83c7-bbf43d6e863c"
-            })
-        });
-        document.getElementById("status").innerText = "Bevakning startad via Telegram!";
-    } catch (err) {
-        console.error(err);
-    }
-}
     async function stopWatch() {
         try {
             await fetch("https://teepilot-server.onrender.com/stop", { method: "POST" });
