@@ -134,7 +134,6 @@
 
 </style>
 <style>
-  /* Uppdatera/lägg till media query i konto.html */
   @media (max-width: 600px) {
       .account-section {
           padding: 120px 15px 60px;
@@ -201,7 +200,7 @@
 <div class="account-box profile" id="profileBox" style="display:none;">
 
     <div class="avatar-wrapper">
-        <div class="avatar" id="avatar">TP</div>
+      <div class="avatar" id="profileInitials">TP</div>    
     </div>
 
     <div class="profile-info">
@@ -298,7 +297,6 @@
     const profileGolfId = document.getElementById("profileGolfId");
     
     
-    // Byter mellan logga in o ens inlogg sida
     window.toggleMode = function() {
 
       isLogin = !isLogin;
@@ -314,7 +312,6 @@
           ? "Har du inget konto? Skapa konto"
           : "Har du redan konto? Logga in";
 
-      // Dessa visas bara när kontot e skapat
       nameInput.style.display = isLogin ? "none" : "block";
       phoneInput.style.display = isLogin ? "none" : "block";
       golfIdInput.style.display = isLogin ? "none" : "block";
@@ -398,7 +395,6 @@
     });
     
     
-// Hitta din befintliga showProfile-funktion och ersätt den med denna:
 function showProfile(user) {
   const authBox = document.getElementById("authBox");
   const profileBox = document.getElementById("profileBox");
@@ -416,12 +412,10 @@ function showProfile(user) {
   profilePhone.innerText = "TELEFON: " + user.phone;
   profileGolfId.innerText = "GOLF-ID: " + user.golfId;
   
-  // --- VIKTIGASTE DELEN ---
-  // Spara all info så att Tjänster-sidan kan hämta det
   localStorage.setItem("userPhone", user.phone);
   localStorage.setItem("userEmail", user.email);
   localStorage.setItem("userGolfId", user.golfId);
-  localStorage.setItem("userPassword", user.password); // Detta saknades troligen!
+  localStorage.setItem("userPassword", user.password);
   
   const initials = user.name
     .split(" ")
@@ -429,7 +423,8 @@ function showProfile(user) {
     .join("");
   profileInitials.innerText = initials;
 }
-    </script>
+
+</script>
     
 
 </body>
