@@ -6,13 +6,11 @@ const { wrapper } = require("axios-cookiejar-support");
 const { CookieJar } = require("tough-cookie");
 const { Resend } = require("resend");
 
-// Din Resend API-nyckel
 const resend = new Resend("re_LHA5wWw6_86BChTR6dCeieuj3W9y3z85U");
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Hantering av cookies för att hålla inloggningen vid liv
 const jar = new CookieJar();
 const client = wrapper(axios.create({ 
     jar, 
@@ -25,6 +23,9 @@ let watchConfig = null;
 let status = "Ingen aktiv bevakning";
 let isSearching = false;
 
+// Standard-ID:n för Vasatorp
+const VASATORP_CLUB_ID = "f2cb0f19-558d-4029-8dc6-0d3340c6eb1a";
+
 app.get("/", (req, res) => res.send(`<h1>TeePilot Server Status</h1><p>${status}</p>`));
 app.get("/status", (req, res) => res.json({ status }));
 
@@ -34,7 +35,8 @@ async function checkTimes() {
 
     try {
         console.log(`\n--- [${new Date().toLocaleTimeString('sv-SE')}] SKANNING STARTAR ---`);
-        const { golfId, password, date, from, to, email } = watchConfig;
+        // Nu tar vi även emot courseId från frontend
+        const { golfId, password, date, from, to, email, courseId } = watchConfig;
 
         await jar.removeAllCookies();
 
@@ -49,12 +51,12 @@ async function checkTimes() {
             }
         });
 
-        // 2. Hämta SCHEMA
-        const VASATORP_CLUB_ID = "f2cb0f19-558d-4029-8dc6-0d3340c6eb1a";
-        const TOURNAMENT_COURSE_ID = "0abbcc77-25a8-4167-83c7-bbf43d6e863c";
+        // 2. Hämta SCHEMA för vald bana
+        // Om inget courseId skickats med, använd Tournament Course som default
+        const targetCourse = courseId || "0abbcc77-25a8-4167-83c7-bbf43d6e863c";
 
         const scheduleRes = await client.get(`/bokning/api/Clubs/${VASATORP_CLUB_ID}/CourseSchedule`, {
-            params: { courseId: TOURNAMENT_COURSE_ID, date: date }
+            params: { courseId: targetCourse, date: date }
         });
 
         let allSlots = Array.isArray(scheduleRes.data) ? scheduleRes.data : (scheduleRes.data?.slots || []);
@@ -64,16 +66,14 @@ async function checkTimes() {
         allSlots.forEach(slot => {
             if (!slot.time || !slot.availablity) return;
 
-            // Tidsformat från API: "2026-05-06T09:00:00Z" (UTC)
             const timePart = slot.time.split("T")[1]; 
             const utcHour = parseInt(timePart.split(":")[0], 10);
             
-            // JUSTERING: +2 timmar för Svensk Sommartid (UTC+2)
+            // Hantera tidszon (Sverige Sommartid = UTC+2)
             const slotHourSwe = utcHour + 2;
             const targetFrom = parseInt(from, 10);
             const targetTo = parseInt(to, 10);
 
-            // Kolla om tiden är inom ditt valda intervall
             if (slotHourSwe >= targetFrom && slotHourSwe <= targetTo) {
                 const isBookable = slot.availablity.bookable;
                 const availableSpaces = slot.availablity.availableSlots;
@@ -82,42 +82,35 @@ async function checkTimes() {
                 const minutes = timePart.split(":")[1];
                 const displayTimeSwe = `${slotHourSwe.toString().padStart(2, '0')}:${minutes}`;
 
-                // --- STRIKT FILTRERING: BARA 4 PLATSER ---
+                // Vi söker specifikt efter hela fyrbollar
                 if (isBookable && !isLocked && availableSpaces === 4) {
                     console.log(`KONTROLL: ${displayTimeSwe} har 4 lediga platser - SPARAR!`);
                     availableSlots.push(displayTimeSwe);
-                } else {
-                    // Logga tider som hoppas över så du ser varför i Render-loggen
-                    if (availableSpaces > 0 && availableSpaces < 4) {
-                        console.log(`HOPPAR ÖVER: ${displayTimeSwe} (Endast ${availableSpaces} platser lediga)`);
-                    }
                 }
             }
         });
 
         if (availableSlots.length > 0) {
             const timeList = availableSlots.join(", ");
+            const courseName = targetCourse === "aaa98917-7e69-4f2b-8eaf-0ed7956ebf00" ? "Classic Course" : "Tournament Course";
             
-            // LOGG: Visa vilken mail mailet skickas till
-            console.log(`FÖRSÖKER SKICKA MAIL TILL: ${email}`);
-            console.log(`MATCHADE TIDER (4 platser): ${timeList}`);
+            console.log(`MATCHADE TIDER: ${timeList} på ${courseName}`);
 
             try {
-                const mailResponse = await resend.emails.send({
+                await resend.emails.send({
                     from: "TeePilot <onboarding@resend.dev>",
                     to: email,
-                    subject: `Tider med 4 platser hittade! (${date})`,
-                    html: `<h3>Lediga fyrbollar hittade!</h3><p>Följande tider har 4 lediga platser den ${date}: <b>${timeList}</b></p>`
+                    subject: `Ledig 4-boll på ${courseName}!`,
+                    html: `<h3>Match funnen!</h3><p>Den ${date} finns lediga 4-bollar på <b>${courseName}</b> vid tiderna: <b>${timeList}</b></p>`
                 });
-                console.log("Resend API svar:", mailResponse);
             } catch (mailErr) {
-                console.error("Kunde inte skicka mail via Resend:", mailErr.message);
+                console.error("Mailfel:", mailErr.message);
             }
 
             status = `Match funnen! Mail skickat till ${email} för: ${timeList}`;
             stopEverything();
         } else {
-            status = `Sökt ${new Date().toLocaleTimeString('sv-SE')}: Inga lediga 4-bollar mellan ${from}-${to}`;
+            status = `Sökt ${new Date().toLocaleTimeString('sv-SE')}: Inga lediga 4-bollar hittade.`;
             console.log(status);
         }
 
@@ -138,12 +131,11 @@ async function stopEverything() {
 app.post("/start", async (req, res) => {
     await stopEverything();
     watchConfig = req.body;
-    status = `Bevakar tider för ${watchConfig.date}...`;
+    status = `Bevakar ${watchConfig.date} på vald bana...`;
     
-    // Kör direkt en gång
-    checkTimes(); 
+    checkTimes(); // Starta första skanningen direkt
     
-    // Starta sedan schemaläggning var 5:e minut
+    // Skanna var 5:e minut
     job = cron.schedule("*/5 * * * *", checkTimes);
     res.sendStatus(200);
 });
@@ -155,4 +147,4 @@ app.post("/stop", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server körs på port ${PORT}`));
+app.listen(PORT, () => console.log(`TeePilot Server aktiv på port ${PORT}`));

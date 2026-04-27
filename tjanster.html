@@ -166,7 +166,7 @@ button:hover {
 <section class="hero">
     <div class="hero-content">
         <h1>Bevakning</h1>
-        <p>Vasatorp Tournament Course</p>
+        <p>Vasatorp</p>
     </div>
 </section>
 
@@ -182,6 +182,14 @@ button:hover {
         <div class="input-group">
             <label>LÖSENORD (MINGOLF)</label>
             <input type="password" id="golfPasswordInput" placeholder="Ditt lösenord...">
+        </div>
+
+        <div class="input-group">
+            <label>VÄLJ BANA</label>
+            <select id="courseSelect">
+                <option value="0abbcc77-25a8-4167-83c7-bbf43d6e863c">Vasatorp - Tournament Course</option>
+                <option value="aaa98917-7e69-4f2b-8eaf-0ed7956ebf00">Vasatorp - Classic Course</option>
+            </select>
         </div>
     
         <div class="input-group">
@@ -240,12 +248,10 @@ button:hover {
         const toSelect = document.getElementById("toTime");
         const selectedFrom = parseInt(fromSelect.value);
         
-        // Töm nuvarande alternativ i "Till tid"
         toSelect.innerHTML = "";
         
-        // Skapa nya alternativ som börjar 1 timme efter vald starttid upp till 20:00
         for (let i = selectedFrom + 1; i <= 20; i++) {
-            const hour = i < 10 ? "0" + i : i; // Lägger till nolla om under 10
+            const hour = i < 10 ? "0" + i : i;
             const option = document.createElement("option");
             option.value = hour;
             option.text = hour + ":00";
@@ -253,7 +259,6 @@ button:hover {
         }
     }
 
-    // Kör funktionen direkt vid start så "Till tid" inte är tom
     updateToTimeOptions();
 </script>
 <script>
