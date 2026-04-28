@@ -146,5 +146,41 @@ app.post("/stop", async (req, res) => {
     res.sendStatus(200);
 });
 
+app.post("/get-bookings", async (req, res) => {
+    const { golfId, password } = req.body;
+    console.log(`Försöker logga in på Min Golf för: ${golfId}...`); // Debug
+
+    if (!password) {
+        console.error("Inget lösenord skickades från frontend!");
+        return res.status(400).json({ error: "Lösenord saknas" });
+    }
+
+    try {
+        await jar.removeAllCookies();
+
+        const loginResponse = await client.post("/login/api/Users/Login", {
+            GolfId: golfId,
+            Password: password
+        }, {
+            headers: { 
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': 'https://mingolf.golf.se/login/'
+            }
+        });
+
+        console.log("Inloggning lyckades, hämtar tider...");
+
+        const bookingsRes = await client.get("/bokning/api/Bookings/GetUpcomingBookings");
+        console.log(`Hittade ${bookingsRes.data.length} bokningar.`);
+        
+        res.json(bookingsRes.data);
+
+    } catch (err) {
+        // Detta visar om det är 401 (fel lösen) eller 500 (serverfel)
+        console.error("Fel vid Min Golf-kommunikation:", err.response?.status || err.message);
+        res.status(500).json({ error: "Kunde inte hämta bokningar" });
+    }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`TeePilot Server aktiv på port ${PORT}`));
