@@ -210,13 +210,6 @@
       <p id="profileGolfId"></p>
     </div>
 
-    <div class="bookings-section" style="margin-top: 30px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;">
-      <h3 style="font-size: 14px; letter-spacing: 2px; margin-bottom: 15px;">KOMMANDE BOKNINGAR</h3>
-      <div id="bookingsList" style="font-size: 12px; opacity: 0.8;">
-          Laddar bokningar...
-      </div>
-    </div>
-
     <button onclick="logout()">LOGGA UT</button>
 </div>
 
@@ -381,83 +374,56 @@
     };
     
     
+    // Auto inlogg // funkar hyfsat(kan bli bättre)
     onAuthStateChanged(auth, async (user) => {
+    
       if (user) {
-        // 1. Hitta användarens dokument i Firestore
+    
         const docRef = doc(db, "users", user.uid);
         const docSnap = await getDoc(docRef);
-
+    
         if (docSnap.exists()) {
-          const userData = docSnap.data();
-          
-          // 2. Skicka all data (inkl. golfId och lösenord) till showProfile
-          showProfile(userData);
-        } else {
-          console.error("Hittade ingen profil i databasen.");
+          showProfile(docSnap.data());
         }
+    
       } else {
-        // Inte inloggad? Visa inloggningsrutan
+    
         authBox.style.display = "block";
         profileBox.style.display = "none";
+    
       }
     });
     
     
 function showProfile(user) {
-      console.log("Försöker hämta tider för:", user.golfId);
-      console.log("Lösenord finns i databas:", user.password ? "JA" : "NEJ");
-      const authBox = document.getElementById("authBox");
-      const profileBox = document.getElementById("profileBox");
-      const profileName = document.getElementById("profileName");
-      const profileInitials = document.getElementById("profileInitials");
+  const authBox = document.getElementById("authBox");
+  const profileBox = document.getElementById("profileBox");
+  const profileName = document.getElementById("profileName");
+  const profileEmail = document.getElementById("profileEmail");
+  const profilePhone = document.getElementById("profilePhone");
+  const profileGolfId = document.getElementById("profileGolfId");
+  const profileInitials = document.getElementById("profileInitials");
 
-      authBox.style.display = "none";
-      profileBox.style.display = "block";
+  authBox.style.display = "none";
+  profileBox.style.display = "block";
 
-      profileName.innerText = "NAMN: " + user.name;
-      document.getElementById("profileEmail").innerText = "E-POST: " + user.email;
-      document.getElementById("profilePhone").innerText = "TELEFON: " + user.phone;
-      document.getElementById("profileGolfId").innerText = "GOLF-ID: " + user.golfId;
-      
-      const initials = user.name.split(" ").map(n => n[0]).join("");
-      profileInitials.innerText = initials;
-
-  // HÄR SKER MAGIN: Anropar servern automatiskt med sparade uppgifter
-  if (user.golfId && user.password) {
-      fetchMyBookings(user.golfId, user.password);
-  }
+  profileName.innerText = "NAMN: " + user.name;
+  profileEmail.innerText = "E-POST: " + user.email;
+  profilePhone.innerText = "TELEFON: " + user.phone;
+  profileGolfId.innerText = "GOLF-ID: " + user.golfId;
+  
+  localStorage.setItem("userPhone", user.phone);
+  localStorage.setItem("userEmail", user.email);
+  localStorage.setItem("userGolfId", user.golfId);
+  localStorage.setItem("userPassword", user.password);
+  
+  const initials = user.name
+    .split(" ")
+    .map(n => n[0])
+    .join("");
+  profileInitials.innerText = initials;
 }
 
-async function fetchMyBookings(golfId, password) {
-    const listContainer = document.getElementById("bookingsList");
-    listContainer.innerHTML = '<p style="opacity:0.5;">Laddar dina bokningar...</p>';
-    
-    try {
-        const response = await fetch("https://teepilot-server.onrender.com/get-bookings", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ golfId, password })
-        });
-
-        const bookings = await response.json();
-
-        if (!bookings || bookings.length === 0) {
-            listContainer.innerHTML = "Inga kommande bokningar.";
-            return;
-        }
-
-        listContainer.innerHTML = bookings.map(b => `
-            <div style="background: rgba(255,255,255,0.05); padding: 12px; margin-bottom: 10px; border-left: 3px solid #3d8a7c;">
-                <p style="margin:0; font-weight:600;">${b.courseName}</p>
-                <p style="margin:5px 0 0 0; font-size:12px; opacity:0.8;">
-                    ${b.startTime.replace('T', ' ').substring(0, 16)}
-                </p>
-            </div>
-        `).join('');
-    } catch (err) {
-        listContainer.innerHTML = "Kunde inte hämta bokningar automatiskt.";
-    }
-}
 </script>
     
 
