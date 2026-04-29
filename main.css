@@ -258,6 +258,10 @@ footer p {
         gap: 10px;
     }
 
+    .hero {
+        height: 200px;
+    }
+
     .hero h1 {
         font-size: 12px;
     }
