@@ -6,6 +6,7 @@ const { wrapper } = require("axios-cookiejar-support");
 const { CookieJar } = require("tough-cookie");
 const { Resend } = require("resend");
 
+// Din befintliga Resend-nyckel
 const resend = new Resend("re_LHA5wWw6_86BChTR6dCeieuj3W9y3z85U");
 const app = express();
 app.use(cors());
@@ -23,7 +24,7 @@ let watchConfig = null;
 let status = "Ingen aktiv bevakning";
 let isSearching = false;
 
-// Standard-ID:n för Vasatorp
+// Standard-ID för Vasatorp
 const VASATORP_CLUB_ID = "f2cb0f19-558d-4029-8dc6-0d3340c6eb1a";
 
 app.get("/", (req, res) => res.send(`<h1>TeePilot Server Status</h1><p>${status}</p>`));
@@ -35,12 +36,13 @@ async function checkTimes() {
 
     try {
         console.log(`\n--- [${new Date().toLocaleTimeString('sv-SE')}] SKANNING STARTAR ---`);
-        // Nu tar vi även emot courseId från frontend
+        
+        // Hämtar konfigurationen som skickats från frontenden
         const { golfId, password, date, from, to, email, courseId } = watchConfig;
 
         await jar.removeAllCookies();
 
-        // 1. Logga in
+        // 1. Logga in på MinGolf
         await client.post("/login/api/Users/Login", {
             GolfId: golfId,
             Password: password
@@ -51,8 +53,7 @@ async function checkTimes() {
             }
         });
 
-        // 2. Hämta SCHEMA för vald bana
-        // Om inget courseId skickats med, använd Tournament Course som default
+        // 2. Välj bana: Prioritera courseId från frontend, annars kör TC som default
         const targetCourse = courseId || "0abbcc77-25a8-4167-83c7-bbf43d6e863c";
 
         const scheduleRes = await client.get(`/bokning/api/Clubs/${VASATORP_CLUB_ID}/CourseSchedule`, {
@@ -82,7 +83,7 @@ async function checkTimes() {
                 const minutes = timePart.split(":")[1];
                 const displayTimeSwe = `${slotHourSwe.toString().padStart(2, '0')}:${minutes}`;
 
-                // Vi söker specifikt efter hela fyrbollar
+                // Sök specifikt efter lediga fyrbollar
                 if (isBookable && !isLocked && availableSpaces === 4) {
                     console.log(`KONTROLL: ${displayTimeSwe} har 4 lediga platser - SPARAR!`);
                     availableSlots.push(displayTimeSwe);
@@ -92,7 +93,15 @@ async function checkTimes() {
 
         if (availableSlots.length > 0) {
             const timeList = availableSlots.join(", ");
-            const courseName = targetCourse === "aaa98917-7e69-4f2b-8eaf-0ed7956ebf00" ? "Classic Course" : "Tournament Course";
+            
+            let courseName = "Okänd bana";
+            if (targetCourse === "59279f96-b573-4dcb-9d9b-8fa6c3bf644e") {
+                courseName = "Classic Course";
+            } else if (targetCourse === "0abbcc77-25a8-4167-83c7-bbf43d6e863c") {
+                courseName = "Tournament Course";
+            } else if (targetCourse === "aaa98917-7e69-4f2b-8eaf-0ed7956ebf00") {
+                courseName = "Park Course";
+            }
             
             console.log(`MATCHADE TIDER: ${timeList} på ${courseName}`);
 
@@ -107,7 +116,7 @@ async function checkTimes() {
                 console.error("Mailfel:", mailErr.message);
             }
 
-            status = `Match funnen! Mail skickat till ${email} för: ${timeList}`;
+            status = `Match funnen! Mail skickat till ${email} för: ${timeList} på ${courseName}`;
             stopEverything();
         } else {
             status = `Sökt ${new Date().toLocaleTimeString('sv-SE')}: Inga lediga 4-bollar hittade.`;
@@ -133,9 +142,8 @@ app.post("/start", async (req, res) => {
     watchConfig = req.body;
     status = `Bevakar ${watchConfig.date} på vald bana...`;
     
-    checkTimes(); // Starta första skanningen direkt
+    checkTimes();
     
-    // Skanna var 5:e minut
     job = cron.schedule("*/5 * * * *", checkTimes);
     res.sendStatus(200);
 });
