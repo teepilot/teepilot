@@ -245,7 +245,7 @@ footer p {
     opacity: 1;
 }
 
-@media (max-width: 600px) {
+@media (max-width: 768px) {
     .navbar {
         padding: 10px 15px;
     }
@@ -259,7 +259,7 @@ footer p {
     }
 
     .hero {
-        height: 200px;
+        height: 75px;
     }
 
     .hero h1 {
