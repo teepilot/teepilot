@@ -8,11 +8,11 @@ const nodemailer = require("nodemailer"); // Ändrad från Resend
 
 const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
-    port: 465,
-    secure: true,
+    port: 587,
+    secure: false,
     auth: {
-        user: "DIN_GMAIL@gmail.com",
-        pass: "tfyjmolzgyynedzo" 
+        user: "teepilot2026@gmail.com",
+        pass: "tfyjmolzgyynedzo"
     },
     tls: {
         family: 4
