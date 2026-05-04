@@ -7,10 +7,15 @@ const { CookieJar } = require("tough-cookie");
 const nodemailer = require("nodemailer"); // Ändrad från Resend
 
 const transporter = nodemailer.createTransport({
-    service: "gmail",
+    host: "smtp.gmail.com",
+    port: 465,
+    secure: true,
     auth: {
-        user: "teepilot2026@gmail.com",
-        pass: "tfyjmolzgyynedzo"         
+        user: "DIN_GMAIL@gmail.com",
+        pass: "tfyjmolzgyynedzo" 
+    },
+    tls: {
+        family: 4
     }
 });
 
