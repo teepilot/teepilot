@@ -186,6 +186,11 @@ button:hover {
             <label>LÖSENORD (MINGOLF)</label>
             <input type="password" id="golfPasswordInput" placeholder="Ditt lösenord...">
         </div>
+        
+        <div class="input-group">
+            <label>TELEFONNUMMER (FÖR NOTIS)</label>
+            <input type="tel" id="phoneInput" placeholder="070-000 00 00">
+        </div>
 
         <div class="input-group">
             <label>VÄLJ BANA</label>
@@ -312,6 +317,7 @@ button:hover {
         document.getElementById("status").innerText = "Serverfel. Kontrollera att Render-servern är vaken.";
     }
 }
+    
 
     async function stopWatch() {
         try {
@@ -326,6 +332,26 @@ button:hover {
             const data = await res.json();
             document.getElementById("status").innerText = data.status;
         } catch (err) {}
+    }
+    // Funktion för att spara en "favorit-tid"
+    async function toggleFavorite(timeSlot) {
+        const user = auth.currentUser;
+        if (!user) {
+            showToast("Du måste vara inloggad för att spara tider", "error");
+            return;
+        }
+
+        const favRef = doc(db, "users", user.uid, "favorites", timeSlot.id);
+        
+        // Spara detaljer om tiden (bana, datum, klockslag)
+        await setDoc(favRef, {
+            course: timeSlot.courseName,
+            date: timeSlot.date,
+            time: timeSlot.time,
+            addedAt: new Date()
+        });
+        
+        showToast("Tiden har sparats till ditt konto!");
     }
 
     window.onload = updateStatus;

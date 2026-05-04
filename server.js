@@ -4,10 +4,16 @@ const cron = require("node-cron");
 const axios = require("axios");
 const { wrapper } = require("axios-cookiejar-support");
 const { CookieJar } = require("tough-cookie");
-const { Resend } = require("resend");
+const nodemailer = require("nodemailer"); // Ändrad från Resend
 
-// Din befintliga Resend-nyckel
-const resend = new Resend("re_LHA5wWw6_86BChTR6dCeieuj3W9y3z85U");
+const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+        user: "teepilot2026@gmail.com",
+        pass: "tfyjmolzgyynedzo"         
+    }
+});
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -24,7 +30,6 @@ let watchConfig = null;
 let status = "Ingen aktiv bevakning";
 let isSearching = false;
 
-// Standard-ID för Vasatorp
 const VASATORP_CLUB_ID = "f2cb0f19-558d-4029-8dc6-0d3340c6eb1a";
 
 app.get("/", (req, res) => res.send(`<h1>TeePilot Server Status</h1><p>${status}</p>`));
@@ -37,12 +42,10 @@ async function checkTimes() {
     try {
         console.log(`\n--- [${new Date().toLocaleTimeString('sv-SE')}] SKANNING STARTAR ---`);
         
-        // Hämtar konfigurationen som skickats från frontenden
         const { golfId, password, date, from, to, email, courseId } = watchConfig;
 
         await jar.removeAllCookies();
 
-        // 1. Logga in på MinGolf
         await client.post("/login/api/Users/Login", {
             GolfId: golfId,
             Password: password
@@ -53,7 +56,6 @@ async function checkTimes() {
             }
         });
 
-        // 2. Välj bana: Prioritera courseId från frontend, annars kör TC som default
         const targetCourse = courseId || "0abbcc77-25a8-4167-83c7-bbf43d6e863c";
 
         const scheduleRes = await client.get(`/bokning/api/Clubs/${VASATORP_CLUB_ID}/CourseSchedule`, {
@@ -63,14 +65,12 @@ async function checkTimes() {
         let allSlots = Array.isArray(scheduleRes.data) ? scheduleRes.data : (scheduleRes.data?.slots || []);
         const availableSlots = [];
 
-        // 3. Analysera tiderna
         allSlots.forEach(slot => {
             if (!slot.time || !slot.availablity) return;
 
             const timePart = slot.time.split("T")[1]; 
             const utcHour = parseInt(timePart.split(":")[0], 10);
             
-            // Hantera tidszon (Sverige Sommartid = UTC+2)
             const slotHourSwe = utcHour + 2;
             const targetFrom = parseInt(from, 10);
             const targetTo = parseInt(to, 10);
@@ -83,7 +83,6 @@ async function checkTimes() {
                 const minutes = timePart.split(":")[1];
                 const displayTimeSwe = `${slotHourSwe.toString().padStart(2, '0')}:${minutes}`;
 
-                // Sök specifikt efter lediga fyrbollar
                 if (isBookable && !isLocked && availableSpaces === 4) {
                     console.log(`KONTROLL: ${displayTimeSwe} har 4 lediga platser - SPARAR!`);
                     availableSlots.push(displayTimeSwe);
@@ -106,12 +105,22 @@ async function checkTimes() {
             console.log(`MATCHADE TIDER: ${timeList} på ${courseName}`);
 
             try {
-                await resend.emails.send({
-                    from: "TeePilot <onboarding@resend.dev>",
+                const mailOptions = {
+                    from: '"TeePilot" <teepilot2026@gmail.com>',
                     to: email,
                     subject: `Ledig 4-boll på ${courseName}!`,
-                    html: `<h3>Match funnen!</h3><p>Den ${date} finns lediga 4-bollar på <b>${courseName}</b> vid tiderna: <b>${timeList}</b></p>`
-                });
+                    html: `
+                        <div style="font-family: Arial, sans-serif; border: 1px solid #ddd; padding: 20px;">
+                            <h2 style="color: #2e7d32;">Match funnen! ⛳</h2>
+                            <p>Den <b>${date}</b> finns lediga 4-bollar på <b>${courseName}</b>.</p>
+                            <p><b>Tillgängliga tider:</b> ${timeList}</p>
+                            <p>Skynda dig att boka i MinGolf!</p>
+                        </div>
+                    `
+                };
+
+                await transporter.sendMail(mailOptions);
+                console.log("Mail skickat via Nodemailer!");
             } catch (mailErr) {
                 console.error("Mailfel:", mailErr.message);
             }
