@@ -15,7 +15,7 @@
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "node-cron": "^3.0.3",
-    "resend": "^3.2.0",
+    "nodemailer": "^8.0.7",
     "tough-cookie": "^6.0.1"
   }
 }
