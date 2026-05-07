@@ -4,19 +4,20 @@ const cron = require("node-cron");
 const axios = require("axios");
 const { wrapper } = require("axios-cookiejar-support");
 const { CookieJar } = require("tough-cookie");
-const nodemailer = require("nodemailer"); // Ändrad från Resend
+const nodemailer = require("nodemailer");
 
 const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
+    port: 465,
+    secure: true, 
     auth: {
         user: "teepilot2026@gmail.com",
         pass: "tfyjmolzgyynedzo"
     },
-    tls: {
-        family: 4
-    }
+    connectionTimeout: 10000,
+    socketTimeout: 10000,
+    dnsTimeout: 10000,
+    family: 4 
 });
 
 const app = express();
