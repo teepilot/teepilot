@@ -126,6 +126,35 @@ button:hover {
     color: black !important; 
 }
 
+.time-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.time-block {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    padding: 10px;
+    text-align: center;
+    border-radius: 4px;
+    font-weight: 600;
+    animation: pulse 2s infinite;
+}
+
+.match-header {
+    color: #4CAF50;
+    margin-bottom: 10px;
+    font-size: 1.1em;
+}
+
+@keyframes pulse {
+    0% { border-color: rgba(255,255,255,0.3); }
+    50% { border-color: #4CAF50; }
+    100% { border-color: rgba(255,255,255,0.3); }
+}
+
 @media (max-width: 768px) {
     .service-container { padding: 30px; }
     .hero h1 { font-size: 36px; }
@@ -322,12 +351,28 @@ button:hover {
     }
 
     async function updateStatus() {
-        try {
-            const res = await fetch("https://teepilot-server.onrender.com/status");
-            const data = await res.json();
-            document.getElementById("status").innerText = data.status;
-        } catch (err) {}
+    try {
+        const res = await fetch("https://teepilot-server.onrender.com/status");
+        const data = await res.json();
+        const statusEl = document.getElementById("status");
+
+        if (data.status && data.status.found) {
+            let html = `<div class="match-header">TRÄFF! ${data.status.course} (${data.status.date})</div>`;
+            html += `<div class="time-grid">`;
+            data.status.times.forEach(t => {
+                html += `<div class="time-block">${t}</div>`;
+            });
+            html += `</div>`;
+            html += `<p style="margin-top:20px; font-size:12px;">Boka snabbt via MinGolf!</p>`;
+            statusEl.innerHTML = html;
+            statusEl.style.opacity = "1";
+        } else {
+            statusEl.innerText = typeof data.status === 'string' ? data.status : "Ingen aktiv bevakning";
+        }
+    } catch (err) {
+        console.log("Kunde inte hämta status");
     }
+}
     // Funktion för att spara en "favorit-tid"
     async function toggleFavorite(timeSlot) {
         const user = auth.currentUser;

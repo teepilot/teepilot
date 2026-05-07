@@ -4,18 +4,6 @@ const cron = require("node-cron");
 const axios = require("axios");
 const { wrapper } = require("axios-cookiejar-support");
 const { CookieJar } = require("tough-cookie");
-const nodemailer = require("nodemailer");
-
-const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 2525,
-    secure: false, 
-    auth: {
-        user: "teepilot2026@gmail.com",
-        pass: "tfyjmolzgyynedzo"
-    },
-    family: 4
-});
 
 const app = express();
 app.use(cors());
@@ -45,7 +33,7 @@ async function checkTimes() {
     try {
         console.log(`\n--- [${new Date().toLocaleTimeString('sv-SE')}] SKANNING STARTAR ---`);
         
-        const { golfId, password, date, from, to, email, courseId } = watchConfig;
+        const { golfId, password, date, from, to, courseId } = watchConfig;
 
         await jar.removeAllCookies();
 
@@ -87,57 +75,33 @@ async function checkTimes() {
                 const displayTimeSwe = `${slotHourSwe.toString().padStart(2, '0')}:${minutes}`;
 
                 if (isBookable && !isLocked && availableSpaces === 4) {
-                    console.log(`KONTROLL: ${displayTimeSwe} har 4 lediga platser - SPARAR!`);
                     availableSlots.push(displayTimeSwe);
                 }
             }
         });
 
         if (availableSlots.length > 0) {
-            const timeList = availableSlots.join(", ");
+            let courseName = "Banan";
+            if (targetCourse === "59279f96-b573-4dcb-9d9b-8fa6c3bf644e") courseName = "Classic Course";
+            else if (targetCourse === "0abbcc77-25a8-4167-83c7-bbf43d6e863c") courseName = "Tournament Course";
+            else if (targetCourse === "aaa98917-7e69-4f2b-8eaf-0ed7956ebf00") courseName = "Park Course";
+
+            status = {
+                found: true,
+                course: courseName,
+                times: availableSlots,
+                date: date
+            };
             
-            let courseName = "Okänd bana";
-            if (targetCourse === "59279f96-b573-4dcb-9d9b-8fa6c3bf644e") {
-                courseName = "Classic Course";
-            } else if (targetCourse === "0abbcc77-25a8-4167-83c7-bbf43d6e863c") {
-                courseName = "Tournament Course";
-            } else if (targetCourse === "aaa98917-7e69-4f2b-8eaf-0ed7956ebf00") {
-                courseName = "Park Course";
-            }
-            
-            console.log(`MATCHADE TIDER: ${timeList} på ${courseName}`);
-
-            try {
-                const mailOptions = {
-                    from: '"TeePilot" <teepilot2026@gmail.com>',
-                    to: email,
-                    subject: `Ledig 4-boll på ${courseName}!`,
-                    html: `
-                        <div style="font-family: Arial, sans-serif; border: 1px solid #ddd; padding: 20px;">
-                            <h2 style="color: #2e7d32;">Match funnen! ⛳</h2>
-                            <p>Den <b>${date}</b> finns lediga 4-bollar på <b>${courseName}</b>.</p>
-                            <p><b>Tillgängliga tider:</b> ${timeList}</p>
-                            <p>Skynda dig att boka i MinGolf!</p>
-                        </div>
-                    `
-                };
-
-                await transporter.sendMail(mailOptions);
-                console.log("Mail skickat via Nodemailer!");
-            } catch (mailErr) {
-                console.error("Mailfel:", mailErr.message);
-            }
-
-            status = `Match funnen! Mail skickat till ${email} för: ${timeList} på ${courseName}`;
+            console.log(`MATCH FUNNEN på ${courseName}`);
             stopEverything();
         } else {
-            status = `Sökt ${new Date().toLocaleTimeString('sv-SE')}: Inga lediga 4-bollar hittade.`;
-            console.log(status);
+            status = `Sökt ${new Date().toLocaleTimeString('sv-SE')}: Inga lediga 4-bollar hittade än.`;
         }
 
     } catch (err) {
         console.error("Fel vid sökning:", err.message);
-        status = "Kunde inte ansluta till MinGolf.";
+        status = "Kunde inte ansluta till MinGolf. Kontrollera inloggningsuppgifter.";
     } finally {
         isSearching = false;
     }
@@ -152,10 +116,8 @@ async function stopEverything() {
 app.post("/start", async (req, res) => {
     await stopEverything();
     watchConfig = req.body;
-    status = `Bevakar ${watchConfig.date} på vald bana...`;
-    
+    status = `Bevakar ${watchConfig.date}...`;
     checkTimes();
-    
     job = cron.schedule("*/5 * * * *", checkTimes);
     res.sendStatus(200);
 });
@@ -167,4 +129,4 @@ app.post("/stop", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`TeePilot Server aktiv på port ${PORT}`));
+app.listen(PORT, () => console.log(`TeePilot Server aktiv (utan mail) på port ${PORT}`));
