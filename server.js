@@ -8,16 +8,13 @@ const nodemailer = require("nodemailer");
 
 const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
-    port: 465,
-    secure: true, 
+    port: 2525,
+    secure: false, 
     auth: {
         user: "teepilot2026@gmail.com",
         pass: "tfyjmolzgyynedzo"
     },
-    connectionTimeout: 10000,
-    socketTimeout: 10000,
-    dnsTimeout: 10000,
-    family: 4 
+    family: 4
 });
 
 const app = express();
