@@ -88,11 +88,17 @@ body {
 }
 
 @media (max-width: 768px) {
+    
+    .logo img {
+        margin-left: -5px;
+        height: 25px;
+    }
+
     .navbar {
         padding: 10px 15px;
     }
     .nav-links {
-        gap: 8px;
+        gap: 5px;
     }
 }
 
