@@ -99,6 +99,7 @@ body {
     }
     .nav-links {
         gap: 5px;
+        margin-right: 3px;
     }
 }
 
