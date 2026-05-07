@@ -228,6 +228,7 @@
     font-size: 14px;
     opacity: 0.8;
     margin-bottom: 25px;
+    color: #fff;
 }
 
 .modal-buttons {
@@ -465,7 +466,6 @@
           const { uid, favId } = favToDelete;
           await deleteDoc(doc(db, "users", uid, "favorites", favId));
           
-          // Ta bort från UI
           const element = document.getElementById(`fav-${favId}`);
           if (element) element.remove();
           
