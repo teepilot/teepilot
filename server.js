@@ -89,7 +89,7 @@ async function checkTimes() {
             status = {
                 found: true,
                 course: courseName,
-                times: availableSlots,
+                times: availableSlots, 
                 date: date
             };
             

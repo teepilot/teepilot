@@ -169,6 +169,32 @@ button:hover {
     font-size: 1.1em;
 }
 
+#toast {
+    visibility: hidden;
+    min-width: 250px;
+    background-color: #3d8a7c;
+    color: #fff;
+    text-align: center;
+    border-radius: 4px;
+    padding: 16px;
+    position: fixed;
+    z-index: 9999;
+    right: 30px;
+    bottom: 30px;
+    font-size: 14px;
+    font-family: 'Cinzel', serif;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    transition: transform 0.5s ease, opacity 0.5s ease;
+    opacity: 0;
+    transform: translateY(100px);
+}
+
+#toast.show {
+    visibility: visible;
+    opacity: 1;
+    transform: translateY(0);
+}
+
 @keyframes pulse {
     0% { border-color: rgba(255,255,255,0.3); }
     50% { border-color: #4CAF50; }
@@ -282,6 +308,7 @@ button:hover {
     
         <p id="status">Ingen aktiv bevakning</p>
     </div>
+    <div id="toast">Tiden har sparats! ❤️</div>
 </section>
 
 <footer>
@@ -295,14 +322,184 @@ button:hover {
     <img src="TeePilot-Logo.png" style="height: 50px; margin-top: 20px;">
 </footer>
 
-<script>
-    function updateToTimeOptions() {
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getFirestore, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBgYD19geGqA0ahIiwarqEjQzQlgHsJTO4",
+      authDomain: "teepilot-a68cb.firebaseapp.com",
+      projectId: "teepilot-a68cb",
+      appId: "1:77764695808:web:6ed1612c078b8e5b57c5e5"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    window.showToast = function(message) {
+        const toast = document.getElementById("toast");
+        toast.innerText = message;
+        toast.classList.add("show");
+        
+        setTimeout(() => {
+            toast.classList.remove("show");
+        }, 3000);
+    };
+
+    window.toggleFavorite = async function(timeSlot, element) {
+        const user = auth.currentUser;
+        
+        if (!user) {
+            showToast("Du måste vara inloggad! 🔒");
+            setTimeout(() => { window.location.href = "konto.html"; }, 1500);
+            return;
+        }
+
+        try {
+            const favRef = doc(db, "users", user.uid, "favorites", timeSlot.id);
+            await setDoc(favRef, {
+                course: timeSlot.courseName,
+                date: timeSlot.date,
+                time: timeSlot.time,
+                savedAt: new Date()
+            });
+
+            showToast(`Match funnen! ${timeSlot.time} sparad ❤️`);
+            
+            if (element) {
+                element.classList.add('active');
+                element.style.color = "#ff4757";
+            }
+            
+        } catch (error) {
+            console.error(error);
+            showToast("Kunde inte spara... ❌");
+        }
+    };
+
+    window.updateStatus = async function() {
+        try {
+            const res = await fetch("https://teepilot-server.onrender.com/status");
+            const data = await res.json();
+            const statusEl = document.getElementById("status");
+
+            if (data.status && data.status.found) {
+                let html = `<div class="match-header">TRÄFF! ${data.status.course} (${data.status.date})</div>`;
+                html += `<div class="time-grid">`;
+                
+                data.status.times.forEach(t => {
+                    const timeSlot = {
+                        id: `${data.status.date}-${t}`.replace(/:/g, ''),
+                        courseName: data.status.course,
+                        date: data.status.date,
+                        time: t
+                    };
+                    html += `
+                        <div class="time-block">
+                            <span class="heart-icon" onclick='toggleFavorite(${JSON.stringify(timeSlot)}, this)'>❤</span>
+                            ${t}
+                        </div>`;
+                });
+                html += `</div>`;
+                statusEl.innerHTML = html;
+                statusEl.style.opacity = "1";
+            } else {
+                statusEl.innerText = typeof data.status === 'string' ? data.status : "Ingen aktiv bevakning";
+            }
+        } catch (err) {
+            console.log("Kunde inte hämta status");
+        }
+    };
+
+    window.startWatch = async function() {
+        const golfId = document.getElementById("golfIdInput").value;
+        const password = document.getElementById("golfPasswordInput").value;
+        const date = document.getElementById("datePicker").value;
+        const from = document.getElementById("fromTime").value;
+        const to = document.getElementById("toTime").value;
+        const courseId = document.getElementById("courseSelect").value; 
+        const email = localStorage.getItem("userEmail");
+        
+        if (!golfId || !password || !date) {
+            alert("Vänligen fyll i Golf-ID, lösenord och datum.");
+            return;
+        }
+
+        document.getElementById("status").innerText = "Kontaktar servern...";
+
+        try {
+            const response = await fetch("https://teepilot-server.onrender.com/start", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    golfId, password, date,
+                    from: parseInt(from),
+                    to: parseInt(to),
+                    courseId: courseId, 
+                    email: email || "din-mail@exempel.se"
+                })
+            });
+
+            if (response.ok) {
+                document.getElementById("status").innerText = "Bevakning startad! Vi söker efter lediga tider...";
+            } else {
+                document.getElementById("status").innerText = "Kunde inte starta. Kontrollera dina uppgifter.";
+            }
+        } catch (err) {
+            document.getElementById("status").innerText = "Serverfel. Kontrollera att Render-servern är vaken.";
+        }
+    };
+
+    window.stopWatch = async function() {
+        try {
+            await fetch("https://teepilot-server.onrender.com/stop", { method: "POST" });
+            document.getElementById("status").innerText = "Bevakning stoppad.";
+        } catch (err) {}
+    };
+
+    window.updateStatus = async function() {
+        try {
+            const res = await fetch("https://teepilot-server.onrender.com/status");
+            const data = await res.json();
+            const statusEl = document.getElementById("status");
+
+            if (data.status && data.status.found) {
+                let html = `<div class="match-header">TRÄFF! ${data.status.course} (${data.status.date})</div>`;
+                html += `<div class="time-grid">`;
+                
+                data.status.times.forEach(t => {
+                    const timeSlot = {
+                        id: `${data.status.date}-${t}`.replace(/:/g, ''),
+                        courseName: data.status.course,
+                        date: data.status.date,
+                        time: t
+                    };
+                    html += `
+                        <div class="time-block">
+                            <span class="heart-icon" onclick='toggleFavorite(${JSON.stringify(timeSlot)})'>❤</span>
+                            ${t}
+                        </div>`;
+                });
+                html += `</div>`;
+                statusEl.innerHTML = html;
+                statusEl.style.opacity = "1";
+            } else {
+                statusEl.innerText = typeof data.status === 'string' ? data.status : "Ingen aktiv bevakning";
+            }
+        } catch (err) {
+            console.log("Kunde inte hämta status");
+        }
+    };
+
+    window.updateToTimeOptions = function() {
         const fromSelect = document.getElementById("fromTime");
         const toSelect = document.getElementById("toTime");
+        if(!fromSelect || !toSelect) return;
+        
         const selectedFrom = parseInt(fromSelect.value);
-        
         toSelect.innerHTML = "";
-        
         for (let i = selectedFrom + 1; i <= 20; i++) {
             const hour = i < 10 ? "0" + i : i;
             const option = document.createElement("option");
@@ -310,133 +507,19 @@ button:hover {
             option.text = hour + ":00";
             toSelect.appendChild(option);
         }
-    }
+    };
 
-    updateToTimeOptions();
-</script>
-<script>
     flatpickr("#datePicker", {
         minDate: "today",
         dateFormat: "Y-m-d",
         disableMobile: true
     });
-
-    async function startWatch() {
-    const golfId = document.getElementById("golfIdInput").value;
-    const password = document.getElementById("golfPasswordInput").value;
-    const date = document.getElementById("datePicker").value;
-    const from = document.getElementById("fromTime").value;
-    const to = document.getElementById("toTime").value;
-    const courseId = document.getElementById("courseSelect").value; 
-    const email = localStorage.getItem("userEmail");
     
-    if (!golfId || !password || !date) {
-        alert("Vänligen fyll i Golf-ID, lösenord och datum.");
-        return;
-    }
-
-    document.getElementById("status").innerText = "Kontaktar servern...";
-
-    try {
-        const response = await fetch("https://teepilot-server.onrender.com/start", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                golfId, 
-                password, 
-                date,
-                from: parseInt(from),
-                to: parseInt(to),
-                courseId: courseId, 
-                email: email || "din-mail@exempel.se"
-            })
-        });
-
-        if (response.ok) {
-            document.getElementById("status").innerText = "Bevakning startad! Vi mailar när en 4-boll blir ledig.";
-        } else {
-            document.getElementById("status").innerText = "Kunde inte starta. Kontrollera dina uppgifter.";
-        }
-    } catch (err) {
-        document.getElementById("status").innerText = "Serverfel. Kontrollera att Render-servern är vaken.";
-    }
-}
+    updateToTimeOptions();
     
-
-    async function stopWatch() {
-        try {
-            await fetch("https://teepilot-server.onrender.com/stop", { method: "POST" });
-            document.getElementById("status").innerText = "Bevakning stoppad.";
-        } catch (err) {}
-    }
-
-    async function updateStatus() {
-    try {
-        const res = await fetch("https://teepilot-server.onrender.com/status");
-        const data = await res.json();
-        const statusEl = document.getElementById("status");
-
-        if (data.status && data.status.found) {
-            let html = `<div class="match-header">TRÄFF! ${data.status.course} (${data.status.date})</div>`;
-            html += `<div class="time-grid">`;
-            
-            data.status.times.forEach(t => {
-                const timeSlot = {
-                    id: `${data.status.date}-${t}`.replace(/:/g, ''),
-                    courseName: data.status.course,
-                    date: data.status.date,
-                    time: t
-                };
-
-                html += `
-                    <div class="time-block">
-                        <span class="heart-icon" onclick='toggleFavorite(${JSON.stringify(timeSlot)})'>❤</span>
-                        ${t}
-                    </div>`;
-            });
-            
-            html += `</div>`;
-            statusEl.innerHTML = html;
-            statusEl.style.opacity = "1";
-        } else {
-            statusEl.innerText = typeof data.status === 'string' ? data.status : "Ingen aktiv bevakning";
-        }
-        } catch (err) {
-            console.log("Kunde inte hämta status");
-        }
-    }
-
-async function toggleFavorite(timeSlot) {
-    const user = typeof auth !== 'undefined' ? auth.currentUser : null;
-    
-    if (!user) {
-        alert("Du måste vara inloggad för att spara favoriter.");
-        window.location.href = "konto.html";
-        return;
-    }
-
-    try {
-        const favRef = doc(db, "users", user.uid, "favorites", timeSlot.id);
-        
-        await setDoc(favRef, {
-            course: timeSlot.courseName,
-            date: timeSlot.date,
-            time: timeSlot.time,
-            savedAt: new Date()
-        });
-
-        alert(`Tiden ${timeSlot.time} sparades till dina favoriter!`);
-        
-        event.target.classList.add('active');
-        
-    } catch (error) {
-        console.error("Error saving favorite:", error);
-        alert("Kunde inte spara favoriten.");
-    }
-}
-
     window.onload = updateStatus;
     setInterval(updateStatus, 10000);
+
 </script>
 
 </body>

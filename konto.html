@@ -135,6 +135,66 @@
     border-left-color: #3498db;
 }
 
+#favoritesList {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.fav-item {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 15px;
+    border-radius: 8px;
+    position: relative;
+    transition: all 0.3s ease;
+    text-align: center;
+}
+
+.fav-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: #3d8a7c;
+    transform: translateY(-2px);
+}
+
+.fav-info h4 {
+    font-size: 16px;
+    margin: 0;
+    color: #fff;
+    font-weight: 600;
+}
+
+.fav-info .fav-course {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #3d8a7c;
+    margin-top: 5px;
+    display: block;
+}
+
+.fav-info .fav-date {
+    font-size: 11px;
+    opacity: 0.6;
+    margin-top: 2px;
+    display: block;
+}
+
+.delete-fav {
+    position: absolute;
+    top: 5px;
+    right: 8px;
+    color: rgba(255, 255, 255, 0.3);
+    cursor: pointer;
+    font-size: 18px;
+    transition: 0.2s;
+}
+
+.delete-fav:hover {
+    color: #ff4757;
+}
+
 </style>
 <style>
   @media (max-width: 600px) {
@@ -213,14 +273,13 @@
       <p id="profileGolfId"></p>
     </div>
 
-    <div id="favoritesSection" style="margin-top: 30px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;">
-      <h3 style="font-size: 14px; letter-spacing: 2px; margin-bottom: 15px; color: #3d8a7c;">SPARADE TIDER ❤️</h3>
-      <div id="favoritesList" style="text-align: left;">
-          <p style="font-size: 11px; opacity: 0.6;">Laddar sparade tider...</p>
-      </div>
+    <div id="favoritesSection" style="margin-top: 40px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 30px;">
+      <h3 style="font-size: 12px; letter-spacing: 3px; margin-bottom: 5px; color: #3d8a7c; text-align: center;">MINA SPARADE TIDER</h3>
+      <div id="favoritesList">
+          </div>
     </div>
 
-    <button onclick="logout()">LOGGA UT</button>
+    <button onclick="logout()" style="margin-top: 10px;">LOGGA UT</button>
 </div>
 
 
@@ -281,37 +340,37 @@
 
 
   async function loadFavorites(uid) {
-      const favoritesList = document.getElementById("favoritesList");
-      if (!favoritesList) return;
+    const favoritesList = document.getElementById("favoritesList");
+    if (!favoritesList) return;
 
-      try {
-          const favRef = collection(db, "users", uid, "favorites");
-          const querySnapshot = await getDocs(favRef);
-          
-          if (querySnapshot.empty) {
-              favoritesList.innerHTML = '<p style="font-size: 11px; opacity: 0.5;">Inga sparade tider än.</p>';
-              return;
-          }
+    try {
+        const favRef = collection(db, "users", uid, "favorites");
+        const querySnapshot = await getDocs(favRef);
+        
+        if (querySnapshot.empty) {
+            favoritesList.innerHTML = '<p style="font-size: 11px; opacity: 0.5; grid-column: 1/-1;">Inga sparade tider än.</p>';
+            return;
+        }
 
-          let html = "";
-          querySnapshot.forEach((doc) => {
-              const data = doc.data();
-              html += `
-                  <div class="fav-item" id="fav-${doc.id}">
-                      <div class="fav-info">
-                          <h4>${data.time} - ${data.course}</h4>
-                          <p>${data.date}</p>
-                      </div>
-                      <span class="delete-fav" onclick="removeFavorite('${uid}', '${doc.id}')">×</span>
-                  </div>
-              `;
-          });
-          favoritesList.innerHTML = html;
-      } catch (error) {
-          console.error("Fel vid hämtning av favoriter:", error);
-      }
-  }
-
+        let html = "";
+        querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            html += `
+                <div class="fav-item" id="fav-${doc.id}">
+                    <span class="delete-fav" onclick="removeFavorite('${uid}', '${doc.id}')">×</span>
+                    <div class="fav-info">
+                        <h4>${data.time}</h4>
+                        <span class="fav-course">${data.course}</span>
+                        <span class="fav-date">${data.date}</span>
+                    </div>
+                </div>
+            `;
+        });
+        favoritesList.innerHTML = html;
+    } catch (error) {
+        console.error("Fel vid hämtning av favoriter:", error);
+    }
+}
   window.removeFavorite = async function(uid, favId) {
       if(!confirm("Vill du ta bort denna tid?")) return;
       
