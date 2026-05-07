@@ -136,15 +136,35 @@ button:hover {
 .time-block {
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.3);
-    padding: 10px;
+    padding: 15px 10px;
     text-align: center;
     border-radius: 4px;
     font-weight: 600;
-    animation: pulse 2s infinite;
+    position: relative;
+    transition: 0.3s;
+}
+
+.heart-icon {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    color: rgba(255, 255, 255, 0.4);
+    transition: 0.3s;
+}
+
+.heart-icon:hover {
+    color: #ff4757;
+    transform: scale(1.2);
+}
+
+.heart-icon.active {
+    color: #ff4757;
 }
 
 .match-header {
-    color: #4CAF50;
+    color: #fff;
     margin-bottom: 10px;
     font-size: 1.1em;
 }
@@ -359,40 +379,61 @@ button:hover {
         if (data.status && data.status.found) {
             let html = `<div class="match-header">TRÄFF! ${data.status.course} (${data.status.date})</div>`;
             html += `<div class="time-grid">`;
+            
             data.status.times.forEach(t => {
-                html += `<div class="time-block">${t}</div>`;
+                const timeSlot = {
+                    id: `${data.status.date}-${t}`.replace(/:/g, ''),
+                    courseName: data.status.course,
+                    date: data.status.date,
+                    time: t
+                };
+
+                html += `
+                    <div class="time-block">
+                        <span class="heart-icon" onclick='toggleFavorite(${JSON.stringify(timeSlot)})'>❤</span>
+                        ${t}
+                    </div>`;
             });
+            
             html += `</div>`;
-            html += `<p style="margin-top:20px; font-size:12px;">Boka snabbt via MinGolf!</p>`;
             statusEl.innerHTML = html;
             statusEl.style.opacity = "1";
         } else {
             statusEl.innerText = typeof data.status === 'string' ? data.status : "Ingen aktiv bevakning";
         }
-    } catch (err) {
-        console.log("Kunde inte hämta status");
-    }
-}
-    // Funktion för att spara en "favorit-tid"
-    async function toggleFavorite(timeSlot) {
-        const user = auth.currentUser;
-        if (!user) {
-            showToast("Du måste vara inloggad för att spara tider", "error");
-            return;
+        } catch (err) {
+            console.log("Kunde inte hämta status");
         }
+    }
 
+async function toggleFavorite(timeSlot) {
+    const user = typeof auth !== 'undefined' ? auth.currentUser : null;
+    
+    if (!user) {
+        alert("Du måste vara inloggad för att spara favoriter.");
+        window.location.href = "konto.html";
+        return;
+    }
+
+    try {
         const favRef = doc(db, "users", user.uid, "favorites", timeSlot.id);
         
-        // Spara detaljer om tiden (bana, datum, klockslag)
         await setDoc(favRef, {
             course: timeSlot.courseName,
             date: timeSlot.date,
             time: timeSlot.time,
-            addedAt: new Date()
+            savedAt: new Date()
         });
+
+        alert(`Tiden ${timeSlot.time} sparades till dina favoriter!`);
         
-        showToast("Tiden har sparats till ditt konto!");
+        event.target.classList.add('active');
+        
+    } catch (error) {
+        console.error("Error saving favorite:", error);
+        alert("Kunde inte spara favoriten.");
     }
+}
 
     window.onload = updateStatus;
     setInterval(updateStatus, 10000);
