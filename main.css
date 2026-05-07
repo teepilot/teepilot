@@ -15,29 +15,85 @@ body {
     top: 0;
     left: 0;
     width: 100%;
-    padding: 20px 50px;
+    padding: 10px 30px;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(12px); 
+    background: rgba(10, 10, 10, 0.6); /* Mörkare transparent */
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     z-index: 1000;
 }
 
+.nav-container {
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
 .logo img {
-    height: 50px;
+    height: 35px;
+    transition: transform 0.3s ease;
+}
+
+.logo:hover img {
+    transform: scale(1.05);
 }
 
 .nav-links {
     list-style: none;
     display: flex;
-    gap: 30px;
+    gap: 15px;
+    align-items: center;
 }
 
-.nav-links a {
+.nav-icon-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    color: rgba(255, 255, 255, 0.6);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     text-decoration: none;
-    color: white;
+}
+
+.nav-icon-link svg {
+    width: 22px;
+    height: 22px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.5;
+}
+
+.nav-icon-link:hover {
+    color: #3d8a7c;
+    background: rgba(61, 138, 124, 0.1);
+    transform: translateY(-2px);
+}
+
+.nav-icon-link.active {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.nav-icon-link.active svg {
+    stroke-width: 2;
+}
+
+@media (max-width: 768px) {
+    .navbar {
+        padding: 10px 15px;
+    }
+    .nav-links {
+        gap: 8px;
+    }
 }
 
 
@@ -246,17 +302,6 @@ footer p {
 }
 
 @media (max-width: 768px) {
-    .navbar {
-        padding: 10px 15px;
-    }
-    
-    .logo img {
-        height: 35px; /* Mindre logga */
-    }
-
-    .nav-links {
-        gap: 10px;
-    }
 
     .hero {
         height: 400px !important;
