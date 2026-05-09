@@ -90,16 +90,21 @@ body {
 @media (max-width: 768px) {
     
     .logo img {
-        margin-left: -10px;
-        height: 15px;
+        display: none;
     }
 
     .navbar {
-        padding: 10px 15px;
+        padding: 10px 0;
     }
+    .nav-container {
+        justify-content: center; 
+        padding: 0;
+    }
+
     .nav-links {
-        gap: 4px;
-        margin-right: 3px;
+        margin: 0 auto;
+        gap: 10px;
+
     }
 }
 
