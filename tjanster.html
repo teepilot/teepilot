@@ -445,11 +445,14 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebas
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    golfId, password, date,
+                    golfId, 
+                    password, 
+                    date,
                     from: parseInt(from),
                     to: parseInt(to),
                     courseId: courseId, 
-                    email: email || "din-mail@exempel.se"
+                    email: email || "din-mail@exempel.se",
+                    pushSubscription: localStorage.getItem('pushSubscription') 
                 })
             });
 
